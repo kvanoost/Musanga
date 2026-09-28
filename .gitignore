@@ -1,0 +1,16 @@
+# Ignore everything
+*
+
+# Allow Git to enter directories
+!*/
+
+# Track only notebooks and documents
+!*.ipynb
+!*.docx
+!*.pdf
+
+# Track this file itself
+!.gitignore
+
+# Never include notebook checkpoints
+.ipynb_checkpoints/
