@@ -40,7 +40,7 @@ The authoritative Luki evaluation source is the validated **364-crown** merge pr
 
 1. [00 — UAV data and illumination audit](00_UAV_Input_Data_Audit.ipynb)
 2. [01 — Reference data and spatial splits](01_Reference_Data_and_Spatial_Splits.ipynb) — native UAV crowns, deterministic 250 m block splits, 30 m buffers, independent merged Luki holdout
-3. 02 — Frozen U-Net reproducibility and illumination baseline (planned)
+3. [02 — Frozen U-Net reference and illumination evaluation](02_Frozen_UNet_Reference_and_Illumination_Evaluation.ipynb) — independent Luki crown-level accuracy, brightness-stratified errors and reference-site apparent diagnostics
 4. 03 — Illumination-robust model development (planned)
 5. 04 — Held-out site and illumination-stratified validation (planned)
 6. 05 — Final frozen model and native-resolution UAV probability inference (planned)
