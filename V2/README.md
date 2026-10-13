@@ -34,12 +34,12 @@ Retain two separate Luki annotation sources:
 - Original: `Geo_Ref/Annotations/Tree_Annotation_Luki.gpkg` (layer `photointerpretation_inventory`)
 - New Nadine dataset: `Geo_Ref/Annotations/Tree_Annotation_Luki_Nadine.shp` plus its `.shx`, `.dbf`, `.prj` and other provided sidecars.
 
-These sources must not be automatically merged. Inspect overlap, disagreements, spatial separation, and evaluation leakage first. `Class_ID == 1` denotes Musanga; preserve the original ≥5 m² crown threshold for comparability.
+The authoritative Luki evaluation source is the validated **364-crown** merge produced by V2 Notebook 00: 361 Nadine polygons plus 3 additional field-inventory Musanga polygons from `Annotations/Luki_field_inventory.gpkg` / `couche_top20`, `Espece == Musanga cecropioides` (7 duplicated field crowns). The original `Tree_Annotation_Luki.gpkg` photointerpretation polygons are retained separately and are not used for species labels. These sources must not be combined a second time. Inspect overlap, disagreements, spatial separation, and evaluation leakage first. `Class_ID == 1` denotes Musanga; preserve the original ≥5 m² crown threshold for comparability.
 
 ## Notebook sequence
 
 1. [00 — UAV data and illumination audit](00_UAV_Input_Data_Audit.ipynb)
-2. 01 — Annotation QA and spatial partitions (planned)
+2. [01 — Reference data and spatial splits](01_Reference_Data_and_Spatial_Splits.ipynb) — native UAV crowns, deterministic 250 m block splits, 30 m buffers, independent merged Luki holdout
 3. 02 — Frozen U-Net reproducibility and illumination baseline (planned)
 4. 03 — Illumination-robust model development (planned)
 5. 04 — Held-out site and illumination-stratified validation (planned)
