@@ -17,10 +17,11 @@ KVO_work/V2/
   00_input_audit/
   01_reference_splits/
   02_frozen_baseline/
-  03_illumination_robust_training/
-  04_spatial_evaluation/
-  05_final_inference/
-  06_satellite_targets/
+  03_illumination_harmonization/
+  04_illumination_robust_training/
+  05_spatial_evaluation/
+  06_final_inference/
+  07_satellite_targets/
 ```
 
 Read existing UAV input files, tree annotations, and optional frozen baseline predictions from the **unchanged original Drive locations**, e.g. `Musanga/data/Geo_Ref/` and `Musanga/KVO_work/KVO_04_final_multisite/`. Existing images, georeferencing, annotations, legacy weights and legacy outputs are **immutable**.
@@ -41,9 +42,10 @@ The authoritative Luki evaluation source is the validated **364-crown** merge pr
 1. [00 — UAV data and illumination audit](00_UAV_Input_Data_Audit.ipynb)
 2. [01 — Reference data and spatial splits](01_Reference_Data_and_Spatial_Splits.ipynb) — native UAV crowns, deterministic 250 m block splits, 30 m buffers, independent merged Luki holdout
 3. [02 — Frozen U-Net reference and illumination evaluation](02_Frozen_UNet_Reference_and_Illumination_Evaluation.ipynb) — independent Luki crown-level accuracy, brightness-stratified errors and reference-site apparent diagnostics
-4. 03 — Illumination-robust model development (planned)
-5. 04 — Held-out site and illumination-stratified validation (planned)
-6. 05 — Final frozen model and native-resolution UAV probability inference (planned)
-7. 06 — Later satellite grid fraction targets (planned; **not** part of initial UAV preprocessing)
+4. [03 — UAV illumination harmonization](03_UAV_Illumination_Harmonization.ipynb) — CPU-only representative patches, conservative global and local normalization QA, no full mosaics
+5. 04 — Illumination-robust model development (planned)
+6. 05 — Held-out site and illumination-stratified validation (planned)
+7. 06 — Final frozen model and native-resolution UAV probability inference (planned)
+8. 07 — Later satellite grid fraction targets (planned; **not** part of initial UAV preprocessing)
 
 No new satellite georeferencing, projection conversion, or target aggregation is permitted in the UAV-only stages. Dataset stats must be measured from Drive sources, not invented from historical results.
