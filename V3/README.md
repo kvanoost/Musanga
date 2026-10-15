@@ -25,3 +25,7 @@ Notebook 00 writes audit tables and RGB agreement preview figures to `Musanga/Fi
 ## Annotation quality control
 
 Notebook 00 additionally reports native-RGB illumination, per-site partial crown labels and their class distributions, and circle-level annotation concordance (area precision/recall, Dice/F1, IoU, fractional cover, crown-object F1 at IoU >= 0.5). Per-circle RGB maps show green agreement, orange tree-only and blue exhaustive-only Musanga polygons, following `Crown/02` SAM diagnostics. These comparisons quantify agreement between two annotation sources; they do not automatically imply that unannotated partial crowns are non-Musanga.
+
+## Authoritative modelling mask
+
+The general `ROI.shp` defines usable UAV imagery for illumination QA, model input sampling, training and prediction. **Never model or output predictions outside this ROI.** `Circles_ROI.shp` is a separate mask used only to identify the exhaustively labelled validation/training circles. Notebook 00 Section 05 samples RGB exclusively inside the general ROI.
