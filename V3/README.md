@@ -29,3 +29,10 @@ Notebook 00 additionally reports native-RGB illumination, per-site partial crown
 ## Authoritative modelling mask
 
 The general `ROI.shp` defines usable UAV imagery for illumination QA, model input sampling, training and prediction. **Never model or output predictions outside this ROI.** `Circles_ROI.shp` is a separate mask used only to identify the exhaustively labelled validation/training circles. Notebook 00 Section 05 samples RGB exclusively inside the general ROI.
+
+## Notebook 01 — Reference supervision and within-site spatial CV
+
+- [V3/01_Reference_Data_and_Spatial_Splits.ipynb](01_Reference_Data_and_Spatial_Splits.ipynb) reads Notebook 00's source manifest; prepares in-memory repaired reference polygons, three within-site spatial circle folds, native window-based label/uncertainty masks, and compact train/validation patch manifests.
+- Primary task: create high-quality full-ROI UAV Musanga probability maps for later satellite fractional-cover modelling, **not** generalization to never-seen forests. MOS is one forest group despite three mosaics.
+- Explicit label contradictions receive zero training weight; unlabelled partial-inventory background remains unknown. Exhaustive circles are the primary quantitative reference. Spatial holdout is used for model selection, followed by refitting on all verified labels for production.
+- Outputs written under `Final/Outputs/V3/01_reference_data/`. The notebook deliberately does **not** fit a model, copy whole UAV rasters, or produce full-mosaic predictions.
