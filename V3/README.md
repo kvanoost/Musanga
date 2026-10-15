@@ -1,18 +1,23 @@
 # Musanga V3
 
-Clean starting point for the Musanga UAV crown and segmentation workflow.
+Clean starting point for Musanga UAV mapping and canopy modelling. Historical notebooks remain available on the `v2` branch.
 
-## Repository layout
+## Repository
 
-- `Crown/`: four preserved crown-analysis notebooks from the previous branch (unchanged).
-- `V3/`: new, clean development workspace. New notebooks and reusable code will be added here.
+- `Crown/`: preserved crown-analysis notebooks, unchanged.
+- `V3/00_UAV_Input_Data_Audit.ipynb`: **start here** — read-only inventory and spatial checks for the new final datasets.
+- Subsequent V3 notebooks will be designed from audited data contracts.
 
-The historical root notebooks, `V2/` and other legacy materials remain available on the `v2` and earlier branches; they are intentionally omitted from `v3`.
+## Authoritative Google Drive data
 
-## Data and outputs
+`Musanga/Final/Data/` with these subfolders:
 
-Source UAV imagery, annotations, model weights, and derived rasters remain in Google Drive. Do not move or rename Drive files until the V3 data-path contract has been agreed and notebooks updated.
+- `Ortho_RGB/`: six RGB orthomosaics: Baego, Yangambi, Yoko, and three MOS mosaics. MOS has **one shared** tree-annotation dataset.
+- `DSM/`: Baego DSM currently available; missing DSMs for other sites are expected.
+- `Annotations/`: per-site tree annotations. The modelling `ROI.shp` may be in `Ortho_RGB/` or the Data root.
 
-## Start
+Luki is excluded from V3 owing to low imagery quality. The audit checks actual files and paths at runtime; it does not assume the Windows Explorer truncated filenames are complete.
 
-No V3 analysis notebooks have been ported yet. Build the new pipeline here from scratch, reusing validated methods and records as needed.
+## Outputs
+
+Notebook 00 writes only small reports to `Musanga/Final/Outputs/V3/00_input_audit/` on Drive. No raster copying, reprojection, inference, or training occurs during input audit.
