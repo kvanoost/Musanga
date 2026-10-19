@@ -40,3 +40,11 @@ NB02B spatial CV: `Musanga/Final/Outputs/V3/02B_spatial3fold_no_MOS34/`.
 NB02B figures: `Musanga/Final/Outputs/V3/02B_spatial3fold_no_MOS34/figures/`.
 
 Older, superseded NB02 notebooks were removed from the working `v3` directory to reduce clutter; Git history retains them.
+
+### Post-baseline experiments (frozen NB02B M2)
+
+- **[02D — Local luminance preprocessing](02D_M2_Local_Illumination_SpatialCV.ipynb):** completed exploratory negative ablation. Compare locally normalized training+inference against original RGB on 30 circles; mask-matched recovery available in Block 08.
+- **[02D2 — V2 photometric augmentation](02D2_V2_Photometric_Augmentation.ipynb):** same global M2 and spatial folds, training-time brightness/gamma/contrast/soft-shadow augmentation inspired by V2/04; native RGB at inference. Reuses NB02B's chip caches, trains only 3 variants.
+- **[02E — Site-specific M2 adaptation](02E_Site_Specific_M2_FineTuning.ipynb):** adapt frozen global M2 separately on site-specific training chips only, then score held-out circles within each site; 3 folds × 4 sites. Reuses original chip caches and checkpoint. Specifically inspect Yangambi. Fine-tuned models are NOT site-external transfer.
+
+Each experiment writes to its own output folder. NB02B is never overwritten; check annotation SHA and exact validation masks before comparative claims.
