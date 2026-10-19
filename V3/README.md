@@ -1,52 +1,42 @@
-# Musanga V3
+# Musanga V3 — UAV Musanga mapping (October 2026)
 
-Clean starting point for Musanga UAV mapping and canopy modelling. Historical notebooks remain available on the `v2` branch.
+## Active notebooks
 
-## Repository
+1. **[00 — UAV input audit](00_UAV_Input_Data_Audit.ipynb)** — input registry, geometry and annotation QA.
+2. **[01 — Reference data and spatial folds](01_Reference_Data_and_Spatial_Splits.ipynb)** — five retained UAV mosaics at four sites (Baego, MOS 1–2, MOS 5–6, Yangambi, Yoko), **30 exhaustive Nadine circles**, three within-site spatial folds, candidate training windows and exclusion buffers. **MOS 3–4 is entirely excluded.**
+3. **[02A — Partial-only LOSO](02A_Partial_Only_LOSO.ipynb)** — four ImageNet-pretrained ResNet18 U-Nets, each held out from one entire forest site. Separate **site-transfer benchmark**: partial-label ROC-AUC/AP, independent 30-circle fractional cover and spatial occurrence diagnostics. The primary objective is *not* transfer to unseen forests.
+4. **[02B — Primary spatial 3-fold M1/M2 benchmark](02B_Exhaustive_Circles_LOSO.ipynb)** — three site-stratified spatial folds, 30 exhaustive circles each tested exactly once per strategy, 15 m exclusion buffer. M1: non-exhaustive annotated crowns only; M2: partial crowns plus *training-fold* exhaustive circles. Same ImageNet-pretrained ResNet18 U-Net, masked BCE, AdamW, crop size and epochs. Evaluate pixel discrimination and overlap, fractional cover and site-level performance. **Block 07** creates publication-ready site-coloured observed–predicted scatterplots with circle IDs, paired circle absolute errors, site facets, fold variability and supplementary **RPD/RPIQ**. No additional training for Block 07.
+5. **[02C — Historical reference only](02C_Simple_Models_Fraction_Validation.ipynb)** — preserved frozen earlier 7-circle TinyUNet benchmark; **not part of the current 30-circle ResNet18 experiment**. Do not use to select the current production model.
+6. **03 — Final production model (planned)** — select strategy from spatial CV; train on all eligible verified annotations; infer full usable-ROI probability maps on five retained mosaics.
+7. **04 — Satellite-grid fraction modelling (planned)** — summarize UAV Musanga probability/cover onto satellite-compatible grids.
 
-- `Crown/`: preserved crown-analysis notebooks, unchanged.
-- `V3/00_UAV_Input_Data_Audit.ipynb`: **start here** — read-only inventory and spatial checks for the new final datasets.
-- Subsequent V3 notebooks will be designed from audited data contracts.
+## Current scientific priority
 
-## Authoritative Google Drive data
+Accurate Musanga occurrence and fractional cover **within the four studied forest sites**, not unseen-site transfer. Final model should be multi-site. The within-site 3-fold estimates predictive skill on withheld geographic circles; final all-label refit is not an independent evaluation.
 
-`Musanga/Final/Data/` with these subfolders:
+**NB02B outcome (30 held-out circles):** M1 fraction R²≈0.540, MAE≈11.57 pp, pixel F1≈0.387; M2 fraction R²≈0.742, MAE≈9.34 pp, pixel F1≈0.532. Yangambi (old-growth forest) is an important low-contrast, lower-prevalence specificity benchmark. Analyze sites separately as well as pooled.
 
-- `Ortho_RGB/`: six RGB orthomosaics: Baego, Yangambi, Yoko, and three MOS mosaics. MOS has **one shared** tree-annotation dataset.
-- `DSM/`: Baego DSM currently available; missing DSMs for other sites are expected.
-- `Annotations/`: per-site tree annotations, plus `Circles_Annotations.shp` (exhaustive Musanga polygons) and `Circles_ROI.shp` (their exhaustive area boundaries). Pixels outside Musanga polygons are confirmed negative only inside these circles. The separate modelling `ROI.shp` may be in `Ortho_RGB/` or the Data root.
+## Dataset and evaluation safeguards
 
-Luki is excluded from V3 owing to low imagery quality. The audit checks actual files and paths at runtime; it does not assume the Windows Explorer truncated filenames are complete.
+- RGB from the five retained GeoTIFFs, original projected coordinate system, general modelling ROI. No predictions outside usable ROI.
+- Partial crown `Class_ID=1` is Musanga; other numeric class IDs are annotated non-Musanga. Unannotated partial-inventory background is **unknown**, not negative.
+- Within exhaustive circles, positive polygons are Musanga regardless of their `Class_ID`; remaining valid in-circle pixels are non-Musanga for supervised M2 training.
+- All 30 exhaustive circles are independent when used as a fold's held-out reference; full circle plus 15 m buffer excluded from training windows, including cross-mosaic MOS intersections. The other folds' circles can contribute M2 supervision.
+- Only training-fold annotations can be used for model fitting or tuning; test-fold circles are for reporting out-of-fold metrics only.
+- Do not infer per-circle cross-validation error bars: each circle has only one out-of-fold prediction per model. The three fold means/SDs describe fold variability, not a confidence interval.
+- No changes to model architecture, validation design, training data selection, preprocessing, weighting, or hyperparameters without explicitly discussing scientific consequences first.
+- Cached chips and completed checkpoints live on Google Drive; existing earlier versions can be recovered from Git history on branch `v3`.
 
-## Outputs
+## Paths
 
-Notebook 00 writes audit tables and RGB agreement preview figures to `Musanga/Final/Outputs/V3/00_input_audit/` on Drive. No raster copying, reprojection, inference, or training occurs during input audit.
+Source data: `Musanga/Final/Data/`.
 
-## Annotation quality control
+Current NB01 reference: `Musanga/Final/Outputs/V3/01_reference_data_no_MOS34/`.
 
-Notebook 00 additionally reports native-RGB illumination, per-site partial crown labels and their class distributions, and circle-level annotation concordance (area precision/recall, Dice/F1, IoU, fractional cover, crown-object F1 at IoU >= 0.5). Per-circle RGB maps show green agreement, orange tree-only and blue exhaustive-only Musanga polygons, following `Crown/02` SAM diagnostics. These comparisons quantify agreement between two annotation sources; they do not automatically imply that unannotated partial crowns are non-Musanga.
+NB02A LOSO output: `Musanga/Final/Outputs/V3/02A_partial_only_LOSO_no_MOS34/`.
 
-## Authoritative modelling mask
+NB02B spatial CV: `Musanga/Final/Outputs/V3/02B_spatial3fold_no_MOS34/`.
 
-The general `ROI.shp` defines usable UAV imagery for illumination QA, model input sampling, training and prediction. **Never model or output predictions outside this ROI.** `Circles_ROI.shp` is a separate mask used only to identify the exhaustively labelled validation/training circles. Notebook 00 Section 05 samples RGB exclusively inside the general ROI.
+NB02B figures: `Musanga/Final/Outputs/V3/02B_spatial3fold_no_MOS34/figures/`.
 
-## Notebook 01 — Reference supervision and within-site spatial CV
-
-- [V3/01_Reference_Data_and_Spatial_Splits.ipynb](01_Reference_Data_and_Spatial_Splits.ipynb) reads Notebook 00's source manifest; prepares in-memory repaired reference polygons, three within-site spatial circle folds, native window-based label/uncertainty masks, and compact train/validation patch manifests.
-- Primary task: create high-quality full-ROI UAV Musanga probability maps for later satellite fractional-cover modelling, **not** generalization to never-seen forests. MOS is one forest group despite three mosaics.
-- Explicit label contradictions receive zero training weight; unlabelled partial-inventory background remains unknown. Exhaustive circles are the primary quantitative reference. Spatial holdout is used for model selection, followed by refitting on all verified labels for production.
-- Outputs written under `Final/Outputs/V3/01_reference_data/`. The notebook deliberately does **not** fit a model, copy whole UAV rasters, or produce full-mosaic predictions.
-
-## Current modelling sequence (October 2026)
-
-1. **[02C — frozen successful M1/M2/M3 comparison](02C_Simple_Models_Fraction_Validation.ipynb)** — saved 15/7 circle split; independent seven-circle cover R² 0.830 and MAE 8.52 percentage points for M2. Do not retrain or overwrite.
-2. **[02D — primary within-site CV + illumination](02D_Spatial_CV_Illumination_Comparison.ipynb)** — canonical **new** 02D, not the earlier exploratory `02D_Rotating_Circle_CV_Illumination.ipynb`. Three spatial folds rotate complete exhaustive circles; evaluate M1 and M2 with native RGB, colour augmentation and V2 Notebook 03's **E1 fixed-site luminance correction** (cap 0.85–1.15). Full-circle fraction R², MAE, RMSE, bias and Brier. Produces `02D_selected_strategy.json`.
-3. **[02E — selected model four-site LOSO](02E_Selected_Model_LOSO.ipynb)** — runs only after 02D, loads its locked method choice, trains on three sites and evaluates all circles in the fourth site; holds all three MOS mosaics together. Separate transferability benchmark, **not** the main production-selection objective.
-4. **03 — final refit and seamless full-ROI orthomosaic inference** — planned. Train selected method on all accepted crowns and circles, export native-resolution feathered probability GeoTIFF with complete valid-ROI coverage checks. Do not assume the prior V2 tiling issues are resolved before production tests.
-5. **04 — satellite-grid Musanga fraction targets**, subsequently satellite extrapolation — planned.
-
-Older `02_First_UNet_Pilot.ipynb`, `02B_Overnight_Strategy_Benchmark.ipynb`, and `02D_Rotating_Circle_CV_Illumination.ipynb` are retained for reproducibility only, not the main run sequence. No field-plot data enter 02D/02E. Ground plots remain a separate ecological diagnostic.
-
-**Dependency:** if general `ROI.shp` changed, rerun NB00 data manifest and NB01 reference/windows before starting a fresh 02D. Previously saved 02C/02B checkpoints remain unchanged on Drive. Do not compare new CV metrics against a prior model without considering different ROI/annotation versions.
-
-**Methodological note:** canonical 02D's quantitative CV is based on exhaustive circles. Independent crown-level spatial holdout, to compare fairly with V2 crown AUC, is a separate validation extension rather than a by-product of circle CV. V2-style E1 is not the same as its experimental E2/E3 local illumination methods.
+Older, superseded NB02 notebooks were removed from the working `v3` directory to reduce clutter; Git history retains them.
