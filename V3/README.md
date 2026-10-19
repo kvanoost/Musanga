@@ -48,3 +48,9 @@ Older, superseded NB02 notebooks were removed from the working `v3` directory to
 - **[02E — Site-specific M2 adaptation](02E_Site_Specific_M2_FineTuning.ipynb):** adapt frozen global M2 separately on site-specific training chips only, then score held-out circles within each site; 3 folds × 4 sites. Reuses original chip caches and checkpoint. Specifically inspect Yangambi. Fine-tuned models are NOT site-external transfer.
 
 Each experiment writes to its own output folder. NB02B is never overwritten; check annotation SHA and exact validation masks before comparative claims.
+
+### NB03 — Full native-resolution mosaic inference
+
+- **[NB03 — Frozen global M2 three-fold ensemble full-mosaic inference](03_Full_Mosaic_M2_Inference.ipynb).** Uses the three original NB02B fold models, each with 256px native RGB input; mosaic-wide 128px stride cosine blending, real-data seam preflight, resumable 1024-row stripes, exact native raster grid and NoData QA. Includes all audited mosaics, including the excluded-from-training MOS3–4 mosaic; optional Luki externally. Training and source rasters are never modified. Output: `Outputs/V3/03_M2_full_mosaic/`.
+
+**Important:** The fold ensemble is a production inference choice, not independently held-out 3-fold CV validation. The reported NB02B scores refer to their individual held-out fold evaluations. Run a small mosaic first and inspect actual image/map seam overlay in GIS before executing all mosaics.
