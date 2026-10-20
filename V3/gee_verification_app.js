@@ -1,242 +1,170 @@
-// MUSANGA — 47 polygon UAV verification (circles 13, 16, 21, 33)
-// Paste into https://code.earthengine.google.com/?project=musanga-511110
-// Labels are browser-session-only: download a CSV before closing the app.
+// MUSANGA — verification app, strict one-feature/one-ID mode.
+// 47 polygons, 4 circles. Download results BEFORE closing session.
+// v4: each displayed geometry is derived from the same exact feature record as its ID.
+// No separate array aggregations, no polygon filter lookup and no preloaded selected layers.
 
-var PREFIX = 'projects/musanga-511110/assets/Verification/';
-var POLYGONS_ASSET = PREFIX + 'verification_4circles';
-var CIRCLES_ASSET = PREFIX + 'circles_4';
-var CIRCLE_IDS = [13, 16, 21, 33];
+var ROOT = 'projects/musanga-511110/assets/Verification/';
+var POLYGON_ASSET = ROOT + 'verification_4circles';
+var CIRCLE_ASSET = ROOT + 'circles_4';
 var RGB_ASSETS = {
-  13: PREFIX + 'circle_13_UAV_RGB',
-  16: PREFIX + 'circle_16_UAV_RGB',
-  21: PREFIX + 'circle_21_UAV_RGB',
-  33: PREFIX + 'circle_33_UAV_RGB'
+  13: ROOT + 'circle_13_UAV_RGB',
+  16: ROOT + 'circle_16_UAV_RGB',
+  21: ROOT + 'circle_21_UAV_RGB',
+  33: ROOT + 'circle_33_UAV_RGB'
 };
+var EXPECTED = {13:16,16:10,21:10,33:11};
 
-var rawPolygons = ee.FeatureCollection(POLYGONS_ASSET);
-var circles = ee.FeatureCollection(CIRCLES_ASSET);
-var polygonFields = rawPolygons.first().propertyNames().getInfo();
-print('Verification table fields:', polygonFields);
-// ESRI Shapefile limits field names to 10 characters.
-// After ZIP upload, verification_id typically becomes 'verificati'.
-var idField = polygonFields.indexOf('verification_id') >= 0
-    ? 'verification_id'
-    : (polygonFields.indexOf('verificati') >= 0 ? 'verificati' : null);
-if (!idField) {
-  throw new Error('Neither verification_id nor verificati exists. Available fields: ' +
-                  polygonFields.join(', '));
+var data = ee.FeatureCollection(POLYGON_ASSET).getInfo();
+if (!data || !data.features || data.features.length !== 47) {
+  throw Error('Expected 47 verification features; received ' +
+    (data && data.features ? data.features.length : 'no features'));
 }
-if (polygonFields.indexOf('circle_id') < 0) {
-  throw new Error('Missing circle_id field. Available fields: ' + polygonFields.join(', '));
+var fields = Object.keys(data.features[0].properties);
+var ID_FIELD = fields.indexOf('verification_id') >= 0 ? 'verification_id'
+  : fields.indexOf('verificati') >= 0 ? 'verificati' : null;
+if (!ID_FIELD || fields.indexOf('circle_id') < 0) {
+  throw Error('Missing ID or circle_id. Actual properties: ' + fields.join(', '));
 }
-print('Using verification ID field:', idField);
-var polygons = rawPolygons.sort(idField);
-// Important: all IDs, circle IDs and centroids must come from ONE server-side
-// record list. Separate aggregate_array/map requests can produce a wrong
-// positional association if collection ordering changes.
-var records = polygons.map(function(feature) {
-  return ee.Feature(null, {
-    rid: feature.get(idField),
-    cid: feature.get('circle_id'),
-    xy: feature.geometry().centroid(0.1).coordinates(),
-    area_m2: feature.geometry().area(0.1)
+
+// Coordinates come from the SAME feature as ID and circle.
+// GeoJSON geometry is passed directly to ee.Geometry when displayed.
+var rows = data.features.map(function(feature) {
+  var id = String(feature.properties[ID_FIELD]);
+  var cid = Number(feature.properties.circle_id);
+  if (!feature.geometry || !feature.geometry.coordinates) {
+    throw Error('Missing geometry for ' + id);
+  }
+  var xs=[],ys=[];
+  function walk(c) {
+    if (typeof c[0] === 'number') {xs.push(c[0]);ys.push(c[1]);}
+    else c.forEach(walk);
+  }
+  walk(feature.geometry.coordinates);
+  var extent=[Math.min.apply(null,xs),Math.min.apply(null,ys),
+              Math.max.apply(null,xs),Math.max.apply(null,ys)];
+  return {id:id,cid:cid,geometry:feature.geometry,
+    extent:extent,center:[(extent[0]+extent[2])/2,(extent[1]+extent[3])/2]};
+}).sort(function(a,b) {return a.id.localeCompare(b.id);});
+
+var seen={};var counts={13:0,16:0,21:0,33:0};
+rows.forEach(function(r) {
+  if (seen[r.id]) throw Error('Duplicate verification ID: '+r.id);
+  seen[r.id]=true;
+  if (!(r.cid in counts)) throw Error('Unexpected circle '+r.cid);
+  counts[r.cid]++;
+});
+Object.keys(EXPECTED).forEach(function(k) {
+  if (counts[k] !== EXPECTED[k]) throw Error('Wrong polygon count in circle '+k);
+});
+
+// Geometry audit: exact duplicate shapes, and bounding boxes closer than 0.25 m.
+var equalShapes=[],closeBoxes=[];
+rows.forEach(function(a,i) {
+  rows.slice(i+1).forEach(function(b) {
+    if (a.cid !== b.cid) return;
+    if (JSON.stringify(a.geometry) === JSON.stringify(b.geometry)) {
+      equalShapes.push(a.id+' = '+b.id);
+    }
+    var dx=(a.center[0]-b.center[0])*111320*Math.cos(a.center[1]*Math.PI/180);
+    var dy=(a.center[1]-b.center[1])*110574;
+    if (Math.sqrt(dx*dx+dy*dy)<0.25) closeBoxes.push(a.id+' ~ '+b.id);
   });
-}).toList(47).getInfo().map(function(item) { return item.properties; });
-records.sort(function(a,b) {return String(a.rid).localeCompare(String(b.rid));});
-var ids = records.map(function(r) {return r.rid;});
-var cids = records.map(function(r) {return r.cid;});
-var centers = records.map(function(r) {return r.xy;});
-print('VERIFY linked records (first 12):', records.slice(0,12));
-var total = ids.length;
-if (total !== 47) {
-  throw new Error('Expected 47 polygons, found ' + total + '. Check verification_polygons asset.');
-}
-if (ids.some(function(v) {return !v;})) {
-  throw new Error('Missing verification_id. Check table properties.');
-}
-if (ids.filter(function(v, i) {return ids.indexOf(v) === i;}).length !== total) {
-  throw new Error('verification_id values are not unique.');
-}
-var expected = {13: 16, 16: 10, 21: 10, 33: 11};
-CIRCLE_IDS.forEach(function(cid) {
-  var n = cids.filter(function(v) {return Number(v) === cid;}).length;
-  if (n !== expected[cid]) {
-    throw new Error('Circle ' + cid + ': expected ' + expected[cid] + ', found ' + n);
-  }
 });
-
-
-// Geometry QA: list geometrically close ID pairs, without automatically dropping
-// potentially distinct overlapping crowns. Coordinates are lon/lat.
-var suspectedPairs = [];
-for (var ia = 0; ia < records.length; ia++) {
-  for (var ib = ia + 1; ib < records.length; ib++) {
-    if (Number(records[ia].cid) !== Number(records[ib].cid)) continue;
-    var dx = (records[ia].xy[0] - records[ib].xy[0]) *
-      111320 * Math.cos(records[ia].xy[1] * Math.PI / 180);
-    var dy = (records[ia].xy[1] - records[ib].xy[1]) * 110574;
-    var distance = Math.sqrt(dx*dx + dy*dy);
-    var ar = Math.min(records[ia].area_m2, records[ib].area_m2) /
-             Math.max(records[ia].area_m2, records[ib].area_m2);
-    if (distance < 2 && ar > 0.8) {
-      suspectedPairs.push({
-        id_1: records[ia].rid, id_2: records[ib].rid,
-        distance_m: Number(distance.toFixed(2)),
-        area_ratio: Number(ar.toFixed(3))
-      });
-    }
-  }
-}
-print('POSSIBLE DUPLICATE GEOMETRIES (near-identical centroids and areas):', suspectedPairs);
-var answers = {};
-var index = 0;
-var finished = false;
-var map = ui.Map();
-map.setOptions('SATELLITE');
-map.setLocked(false, 0, 24);
-map.style().set('stretch', 'both');
-var panel = ui.Panel({style: {width: '355px', padding: '12px'}});
-var header = ui.Label('Musanga — UAV verification', {
-  fontWeight: 'bold', fontSize: '20px', margin: '0 0 8px 0'
-});
-var intro = ui.Label('Classify each red-outlined polygon using the high-resolution UAV RGB. Labels are stored only in this session.',
-  {whiteSpace: 'pre-wrap', margin: '0 0 12px 0'});
-var progress = ui.Label('', {fontWeight: 'bold'});
-var featureLabel = ui.Label('', {fontSize: '15px', fontWeight: 'bold'});
-var answerLabel = ui.Label('');
-var infoLabel = ui.Label('');
-var downloadLink = ui.Label('', {color: 'blue', fontWeight: 'bold'});
-// Multiline CSV display; avoids unsupported UI elements.
-var csvBox = ui.Label('', {
-  whiteSpace: 'pre-wrap',
-  fontFamily: 'monospace',
-  fontSize: '11px',
-  shown: false
-});
-var visited = {};
-var jump = ui.Select({items: ids.map(function(id, i) {
-  return {label: String(i + 1) + ': ' + String(id), value: String(i)};
-}), onChange: function(value) {if (value !== null) render(Number(value));},
-  style: {stretch: 'horizontal'}});
-
-
-panel.add(header).add(intro).add(progress).add(featureLabel).add(answerLabel);
-
-// Cache image and circle layers, and avoid resetting RGB on every classification.
-var CACHED_LAYERS = {};
-var activeCircle = null;
-CIRCLE_IDS.forEach(function(cid) {
-  CACHED_LAYERS[cid] = [
-    ui.Map.Layer(ee.Image(RGB_ASSETS[cid]),
-      {bands: ['b1', 'b2', 'b3'], min: 0, max: 255},
-      'UAV RGB — circle ' + cid, true),
-    ui.Map.Layer(circles.filter(ee.Filter.eq('circle_id', cid))
-      .style({color: '00FFFF', fillColor: '00000000', width: 2}),
-      {}, 'Nadine circle', true),
-    ui.Map.Layer(polygons.filter(ee.Filter.eq('circle_id', cid))
-      .style({color: 'FFFF00', fillColor: '00000000', width: 1}),
-      {}, 'Other verification polygons', true)
-  ];
-});
-function countAnswers() { return Object.keys(answers).length; }
-function render(i) {
-  // Do not silently wrap to the beginning: this caused repeated reviews.
-  if (i < 0 || i >= total) {
-    infoLabel.setValue(i >= total ? 'End of 47 polygons. Download CSV or use Previous to revise.' :
-      'Already at the first polygon.');
-    return;
-  }
-  index = i;
-  finished = false;
-  var id = ids[index];
-  var cid = Number(cids[index]);
-  var thisPolygon = polygons.filter(ee.Filter.eq(idField, id));
-
-  var selectedLayer = ui.Map.Layer(
-    thisPolygon.style({color: 'FF0000', fillColor: 'FF000044', width: 4}),
-    {}, 'Selected: ' + id, true
-  );
-  if (activeCircle !== cid) {
-    // Switch the background ONLY when moving to another circle.
-    var baseLayers = CACHED_LAYERS[cid];
-    map.layers().reset([
-      baseLayers[0], baseLayers[1], baseLayers[2], selectedLayer
-    ]);
-    activeCircle = cid;
-  } else {
-    // Preserve RGB and other layers, so browser/GEE map tiles can be reused.
-    map.layers().set(3, selectedLayer);
-  }
-  // Client-side centering avoids late GEE callbacks moving back to old polygons.
-  map.setCenter(centers[index][0], centers[index][1], 22);
-  visited[id] = (visited[id] || 0) + 1;
-  progress.setValue('Polygon ' + (index + 1) + ' / ' + total +
-    ' · classified ' + countAnswers() + ' / ' + total +
-    (visited[id] > 1 ? ' · REVISIT' : ''));
-  featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid + ' | Center: ' + centers[index][0].toFixed(7) + ', ' + centers[index][1].toFixed(7));
-  answerLabel.setValue('Current label: ' + (answers[id] || 'Unreviewed'));
-  // Keep previously generated CSV link and copyable backup visible.
-  infoLabel.setValue('');
-}
-function classify(value) {
-  answers[ids[index]] = value;
-  // Move to next UNREVIEWED polygon; do not reclassify completed IDs.
-  for (var j = index + 1; j < total; j++) {
-    if (!Object.prototype.hasOwnProperty.call(answers, ids[j])) {
-      render(j);
-      return;
-    }
-  }
-  if (countAnswers() === total) {
-    finished = true;
-    progress.setValue('COMPLETE — ' + total + ' / ' + total + ' classified');
-    answerLabel.setValue('Last classification saved. Use CSV below or Previous to revise.');
-    infoLabel.setValue('Classification complete. Generate and save your CSV.');
-  } else {
-    infoLabel.setValue('No more unreviewed polygons ahead. Use Jump to ID or export current CSV.');
-  }
-}
-function makeButton(name, fn) {
-  return ui.Button({label: name, onClick: fn, style: {stretch: 'horizontal'}});
-}
-var nav = ui.Panel({layout: ui.Panel.Layout.flow('horizontal')});
-nav.add(makeButton('◀ Previous', function() {render(index - 1);}));
-nav.add(makeButton('Next ▶', function() {render(index + 1);}));
-panel.add(nav);
-panel.add(ui.Label('Jump directly to an ID (useful for checking suspected duplicates):'));
-panel.add(jump);
-panel.add(makeButton('MUSANGA', function() {classify('musanga');}));
-panel.add(makeButton('NON-MUSANGA', function() {classify('non_musanga');}));
-panel.add(makeButton('UNCERTAIN / SKIP', function() {classify('uncertain');}));
-panel.add(makeButton('Clear current label', function() {
-  delete answers[ids[index]];
-  render(index);
+print('NB06 v4 — direct geometry mode. Feature count:',rows.length);
+print('Exact duplicate geometry pairs:',equalShapes);
+print('Nearly identical centers (<0.25 m):',closeBoxes);
+print('Selected features (first 16):',rows.slice(0,16).map(function(r) {
+  return {id:r.id,circle:r.cid,center:r.center,extent:r.extent};
 }));
 
-function exportCSV() {
-  // Generate 47 rows on the client instantly: no Earth Engine job required.
-  // Deliberately include ALL IDs, including unreviewed ones.
-  var lines = ['verification_id,circle_id,classification'];
-  ids.forEach(function(id, i) {
-    lines.push('"' + String(id).replace(/"/g, '""') + '",' +
-      String(Number(cids[i])) + ',' + (answers[id] || 'unreviewed'));
-  });
-  var csv = lines.join('\n') + '\n';
-  csvBox.setValue(csv);
-  csvBox.style().set('shown', true);
-  var uri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  downloadLink.setValue('⬇ Save CSV (instant link)');
-  downloadLink.setUrl(uri);
-  infoLabel.setValue('CSV ready instantly: ' + countAnswers() + '/47 classified. ' +
-    'Click Save CSV; if your browser blocks data links, copy the CSV from the box below. ' +
-    'No server request required.');
+var answers={},index=0,currentCircle=null;
+var map=ui.Map();
+map.setOptions('SATELLITE');
+map.setLocked(false,0,24);
+var side=ui.Panel({style:{width:'365px',padding:'10px'}});
+var progress=ui.Label('',{fontWeight:'bold'});
+var idLabel=ui.Label('',{fontWeight:'bold',fontSize:'16px'});
+var coordLabel=ui.Label('',{fontSize:'11px'});
+var status=ui.Label('');
+var csvLink=ui.Label('',{color:'blue'});
+var csvPreview=ui.Label('',{whiteSpace:'pre-wrap',fontSize:'10px',shown:false});
+var jump=ui.Select({
+  items:rows.map(function(r,i) {return {label:(i+1)+' / 47: '+r.id,value:String(i)};}),
+  onChange:function(value) {if(value!==null) show(Number(value));},
+  style:{stretch:'horizontal'}
+});
+side.add(ui.Label('Musanga — verification (v4)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('The RED polygon is the only active candidate. Other verification polygons are intentionally hidden.'));
+side.add(progress);side.add(idLabel);side.add(coordLabel);
+side.add(jump);
+
+function show(n) {
+  if(n<0 || n>=rows.length) {
+    status.setValue(n>=rows.length?'End of 47. Download your CSV.':'Already at first polygon.');
+    return;
+  }
+  index=n;
+  var r=rows[index];
+  var geometry=ee.Geometry(r.geometry);
+  // Intentionally rebuild selected geometry on every navigation;
+  // correctness takes priority over marginal redraw speed.
+  var circle=ee.FeatureCollection(CIRCLE_ASSET).filter(ee.Filter.eq('circle_id',r.cid));
+  var selected=ee.FeatureCollection([ee.Feature(geometry,{id:r.id})]);
+  var rgb=ee.Image(RGB_ASSETS[r.cid]);
+  map.layers().reset([
+    ui.Map.Layer(rgb,{bands:['b1','b2','b3'],min:0,max:255},
+                 'UAV RGB circle '+r.cid,true),
+    ui.Map.Layer(circle.style({color:'00FFFF',fillColor:'00000000',width:2}),{},
+                 'Nadine circle boundary',true),
+    ui.Map.Layer(selected.style({color:'FF0000',fillColor:'FF000055',width:4}),{},
+                 'ACTIVE POLYGON: '+r.id,true)
+  ]);
+  map.setCenter(r.center[0],r.center[1],22);
+  idLabel.setValue(r.id+'   (circle '+r.cid+')');
+  coordLabel.setValue('Longitude '+r.center[0].toFixed(7)+
+    ' | Latitude '+r.center[1].toFixed(7));
+  progress.setValue('Candidate '+(index+1)+'/47 | classified '+Object.keys(answers).length+'/47'
+    +' | '+(answers[r.id] || 'UNREVIEWED'));
+  status.setValue('');
+  print('SHOW',r.id,'circle',r.cid,'bbox',r.extent);
 }
-panel.add(makeButton('Prepare CSV download', exportCSV));
-panel.add(downloadLink);
-panel.add(infoLabel);
-panel.add(csvBox);
-panel.add(ui.Label('Important: the app does not save answers automatically. Download the CSV before closing or refreshing.',
-  {color: '#A33', whiteSpace: 'pre-wrap', margin: '12px 0 0 0'}));
+function record(label) {
+  answers[rows[index].id]=label;
+  if(index<rows.length-1) show(index+1);
+  else {
+    progress.setValue('End of 47: '+Object.keys(answers).length+'/47 classified');
+    status.setValue('Final polygon recorded. Prepare CSV below.');
+  }
+}
+function btn(name,fn) {
+  return ui.Button({label:name,onClick:fn,style:{stretch:'horizontal'}});
+}
+var nav=ui.Panel({layout:ui.Panel.Layout.flow('horizontal')});
+nav.add(btn('◀ Previous',function(){show(index-1);}));
+nav.add(btn('Next ▶',function(){show(index+1);}));
+side.add(nav);
+side.add(btn('Musanga',function(){record('musanga');}));
+side.add(btn('Non-Musanga',function(){record('non_musanga');}));
+side.add(btn('Uncertain',function(){record('uncertain');}));
+side.add(btn('Clear current answer',function(){delete answers[rows[index].id];show(index);}));
+
+function csvEscape(value) {return '"'+String(value).replace(/"/g,'""')+'"';}
+function makeCSV() {
+  var lines=['verification_id,circle_id,classification'];
+  rows.forEach(function(r) {
+    lines.push(csvEscape(r.id)+','+r.cid+','+(answers[r.id]||'unreviewed'));
+  });
+  var csv=lines.join('\n')+'\n';
+  csvPreview.setValue(csv);
+  csvPreview.style().set('shown',true);
+  csvLink.setValue('Download 47-row CSV');
+  csvLink.setUrl('data:text/csv;charset=utf-8,'+encodeURIComponent(csv));
+  status.setValue('CSV prepared immediately. Click download link; if blocked, select and copy the preview.');
+}
+side.add(btn('Prepare CSV download',makeCSV));
+side.add(csvLink);side.add(status);side.add(csvPreview);
+side.add(ui.Label('Answers remain only in this browser session. Export before exiting.',
+  {color:'#a22'}));
 ui.root.clear();
-ui.root.add(ui.SplitPanel({firstPanel: panel, secondPanel: map, orientation: 'horizontal', wipe: false}));
-render(0);
+ui.root.add(ui.SplitPanel({firstPanel:side,secondPanel:map,orientation:'horizontal',wipe:false}));
+show(0);
