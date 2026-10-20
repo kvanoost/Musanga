@@ -173,8 +173,7 @@ function render(i) {
   progress.setValue('Polygon ' + (index + 1) + ' / ' + total +
     ' · classified ' + countAnswers() + ' / ' + total +
     (visited[id] > 1 ? ' · REVISIT' : ''));
-  featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid + '\\n' +
-    'Center: ' + centers[index][0].toFixed(7) + ', ' + centers[index][1].toFixed(7));
+  featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid + ' | Center: ' + centers[index][0].toFixed(7) + ', ' + centers[index][1].toFixed(7));
   answerLabel.setValue('Current label: ' + (answers[id] || 'Unreviewed'));
   // Keep previously generated CSV link and copyable backup visible.
   infoLabel.setValue('');
