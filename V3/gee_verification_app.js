@@ -33,6 +33,11 @@ print('Using verification ID field:', idField);
 var polygons = rawPolygons.sort(idField);
 var ids = polygons.aggregate_array(idField).getInfo();
 var cids = polygons.aggregate_array('circle_id').getInfo();
+// Fetch centers once. Avoid overlapping asynchronous centerObject requests,
+// which can make the map appear stuck on an earlier polygon.
+var centers = polygons.map(function(f) {
+  return f.set('_review_center', f.geometry().centroid(1).coordinates());
+}).aggregate_array('_review_center').getInfo();
 var total = ids.length;
 if (total !== 47) {
   throw new Error('Expected 47 polygons, found ' + total + '. Check verification_polygons asset.');
@@ -53,8 +58,10 @@ CIRCLE_IDS.forEach(function(cid) {
 
 var answers = {};
 var index = 0;
+var finished = false;
 var map = ui.Map();
 map.setOptions('SATELLITE');
+map.setLocked(false, 0, 24);
 map.style().set('stretch', 'both');
 var panel = ui.Panel({style: {width: '355px', padding: '12px'}});
 var header = ui.Label('Musanga — UAV verification', {
@@ -67,6 +74,14 @@ var featureLabel = ui.Label('', {fontSize: '15px', fontWeight: 'bold'});
 var answerLabel = ui.Label('');
 var infoLabel = ui.Label('');
 var downloadLink = ui.Label('', {color: 'blue', fontWeight: 'bold'});
+var csvBox = ui.Textarea({placeholder: 'Your CSV appears here instantly. You can copy it as a backup.',
+  style: {stretch: 'horizontal', height: '125px', shown: false}});
+var visited = {};
+var jump = ui.Select({items: ids.map(function(id, i) {
+  return {label: String(i + 1) + ': ' + String(id), value: String(i)};
+}), onChange: function(value) {if (value !== null) render(Number(value));},
+  style: {stretch: 'horizontal'}});
+
 
 panel.add(header).add(intro).add(progress).add(featureLabel).add(answerLabel);
 
@@ -88,7 +103,14 @@ CIRCLE_IDS.forEach(function(cid) {
 });
 function countAnswers() { return Object.keys(answers).length; }
 function render(i) {
-  index = ((i % total) + total) % total;
+  // Do not silently wrap to the beginning: this caused repeated reviews.
+  if (i < 0 || i >= total) {
+    infoLabel.setValue(i >= total ? 'End of 47 polygons. Download CSV or use Previous to revise.' :
+      'Already at the first polygon.');
+    return;
+  }
+  index = i;
+  finished = false;
   var id = ids[index];
   var cid = Number(cids[index]);
   var thisPolygon = polygons.filter(ee.Filter.eq(idField, id));
@@ -108,16 +130,34 @@ function render(i) {
     // Preserve RGB and other layers, so browser/GEE map tiles can be reused.
     map.layers().set(3, selectedLayer);
   }
-  map.centerObject(thisPolygon, 22);
-  progress.setValue('Polygon ' + (index + 1) + ' / ' + total + '  ·  classified ' + countAnswers() + ' / ' + total);
+  // Client-side centering avoids late GEE callbacks moving back to old polygons.
+  map.setCenter(centers[index][0], centers[index][1], 22);
+  visited[id] = (visited[id] || 0) + 1;
+  progress.setValue('Polygon ' + (index + 1) + ' / ' + total +
+    ' · classified ' + countAnswers() + ' / ' + total +
+    (visited[id] > 1 ? ' · REVISIT' : ''));
   featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid);
   answerLabel.setValue('Current label: ' + (answers[id] || 'Unreviewed'));
-  downloadLink.setValue('');
+  // Keep previously generated CSV link and copyable backup visible.
   infoLabel.setValue('');
 }
 function classify(value) {
   answers[ids[index]] = value;
-  render(index + 1);
+  // Move to next UNREVIEWED polygon; do not reclassify completed IDs.
+  for (var j = index + 1; j < total; j++) {
+    if (!Object.prototype.hasOwnProperty.call(answers, ids[j])) {
+      render(j);
+      return;
+    }
+  }
+  if (countAnswers() === total) {
+    finished = true;
+    progress.setValue('COMPLETE — ' + total + ' / ' + total + ' classified');
+    answerLabel.setValue('Last classification saved. Use CSV below or Previous to revise.');
+    infoLabel.setValue('Classification complete. Generate and save your CSV.');
+  } else {
+    infoLabel.setValue('No more unreviewed polygons ahead. Use Jump to ID or export current CSV.');
+  }
 }
 function makeButton(name, fn) {
   return ui.Button({label: name, onClick: fn, style: {stretch: 'horizontal'}});
@@ -126,6 +166,8 @@ var nav = ui.Panel({layout: ui.Panel.Layout.flow('horizontal')});
 nav.add(makeButton('◀ Previous', function() {render(index - 1);}));
 nav.add(makeButton('Next ▶', function() {render(index + 1);}));
 panel.add(nav);
+panel.add(ui.Label('Jump directly to an ID (useful for checking suspected duplicates):'));
+panel.add(jump);
 panel.add(makeButton('MUSANGA', function() {classify('musanga');}));
 panel.add(makeButton('NON-MUSANGA', function() {classify('non_musanga');}));
 panel.add(makeButton('UNCERTAIN / SKIP', function() {classify('uncertain');}));
@@ -135,29 +177,27 @@ panel.add(makeButton('Clear current label', function() {
 }));
 
 function exportCSV() {
-  var features = ids.map(function(id, i) {
-    return ee.Feature(null, {
-      verification_id: String(id),
-      circle_id: Number(cids[i]),
-      classification: answers[id] || 'unreviewed'
-    });
+  // Generate 47 rows on the client instantly: no Earth Engine job required.
+  // Deliberately include ALL IDs, including unreviewed ones.
+  var lines = ['verification_id,circle_id,classification'];
+  ids.forEach(function(id, i) {
+    lines.push('"' + String(id).replace(/"/g, '""') + '",' +
+      String(Number(cids[i])) + ',' + (answers[id] || 'unreviewed'));
   });
-  var fc = ee.FeatureCollection(features);
-  infoLabel.setValue('Preparing CSV…');
-  fc.getDownloadURL({format: 'CSV', selectors: ['verification_id', 'circle_id', 'classification'],
-    filename: 'musanga_verification_47'}, function(url, error) {
-    if (error) {
-      infoLabel.setValue('CSV error: ' + error);
-      return;
-    }
-    downloadLink.setValue('⬇ Download verification CSV');
-    downloadLink.setUrl(url);
-    infoLabel.setValue('Ready: ' + countAnswers() + ' / ' + total + ' polygons classified. Click the link.');
-  });
+  var csv = lines.join('\\n') + '\\n';
+  csvBox.setValue(csv);
+  csvBox.style().set('shown', true);
+  var uri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  downloadLink.setValue('⬇ Save CSV (instant link)');
+  downloadLink.setUrl(uri);
+  infoLabel.setValue('CSV ready instantly: ' + countAnswers() + '/47 classified. ' +
+    'Click Save CSV; if your browser blocks data links, copy the CSV from the box below. ' +
+    'No server request required.');
 }
 panel.add(makeButton('Prepare CSV download', exportCSV));
 panel.add(downloadLink);
 panel.add(infoLabel);
+panel.add(csvBox);
 panel.add(ui.Label('Important: the app does not save answers automatically. Download the CSV before closing or refreshing.',
   {color: '#A33', whiteSpace: 'pre-wrap', margin: '12px 0 0 0'}));
 ui.root.clear();
