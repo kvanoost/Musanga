@@ -17,8 +17,8 @@ var EXPECTED_UNIQUE = {13:8,16:10,21:10,33:11};
 // Exact duplicate geometry pairs established by independent Colab IoU=1 checks.
 var DUPLICATE_OF = {};
 for (var dupeIndex=0;dupeIndex<8;dupeIndex++) {
-  var originalId='C13_V'+String(11+dupeIndex).padStart(5,'0');
-  var duplicateId='C13_V'+String(19+dupeIndex).padStart(5,'0');
+  var originalId='C13_V'+('00000'+(11+dupeIndex)).slice(-5);
+  var duplicateId='C13_V'+('00000'+(19+dupeIndex)).slice(-5);
   DUPLICATE_OF[duplicateId]=originalId;
 }
 
@@ -97,7 +97,7 @@ rows.forEach(function(a,i) {
     if (Math.sqrt(dx*dx+dy*dy)<0.25) closeBoxes.push(a.id+' ~ '+b.id);
   });
 });
-print('NB06 v4 — direct geometry mode. Unique feature count:',rows.length);
+print('NB06 v5 — deduplicated direct geometry mode. Unique feature count:',rows.length);
 print('Exact duplicate geometry pairs:',equalShapes);
 print('Specific pair C13_V00012/C13_V00020:', allRows.filter(function(r){return r.id==='C13_V00012'||r.id==='C13_V00020';}).map(function(r){return {id:r.id,center:r.center,extent:r.extent};}));
 print('Nearly identical centers (<0.25 m):',closeBoxes);
