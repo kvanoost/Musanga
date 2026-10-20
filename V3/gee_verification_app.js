@@ -74,7 +74,7 @@ var featureLabel = ui.Label('', {fontSize: '15px', fontWeight: 'bold'});
 var answerLabel = ui.Label('');
 var infoLabel = ui.Label('');
 var downloadLink = ui.Label('', {color: 'blue', fontWeight: 'bold'});
-// Earth Engine UI has no ui.Textarea; ui.Label supports multiline text.
+// Multiline CSV display; avoids unsupported UI elements.
 var csvBox = ui.Label('', {
   whiteSpace: 'pre-wrap',
   fontFamily: 'monospace',
