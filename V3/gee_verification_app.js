@@ -1,5 +1,5 @@
 // MUSANGA — verification app, strict one-feature/one-ID mode.
-// 47 polygons, 4 circles. Download results BEFORE closing session.
+// 47 source records -> 39 unique polygons. Download results BEFORE closing session.
 // v4: each displayed geometry is derived from the same exact feature record as its ID.
 // No separate array aggregations, no polygon filter lookup and no preloaded selected layers.
 
@@ -13,6 +13,14 @@ var RGB_ASSETS = {
   33: ROOT + 'circle_33_UAV_RGB'
 };
 var EXPECTED = {13:16,16:10,21:10,33:11};
+var EXPECTED_UNIQUE = {13:8,16:10,21:10,33:11};
+// Exact duplicate geometry pairs established by independent Colab IoU=1 checks.
+var DUPLICATE_OF = {};
+for (var dupeIndex=0;dupeIndex<8;dupeIndex++) {
+  var originalId='C13_V'+String(11+dupeIndex).padStart(5,'0');
+  var duplicateId='C13_V'+String(19+dupeIndex).padStart(5,'0');
+  DUPLICATE_OF[duplicateId]=originalId;
+}
 
 var data = ee.FeatureCollection(POLYGON_ASSET).getInfo();
 if (!data || !data.features || data.features.length !== 47) {
@@ -28,7 +36,7 @@ if (!ID_FIELD || fields.indexOf('circle_id') < 0) {
 
 // Coordinates come from the SAME feature as ID and circle.
 // GeoJSON geometry is passed directly to ee.Geometry when displayed.
-var rows = data.features.map(function(feature) {
+var allRows = data.features.map(function(feature) {
   var id = String(feature.properties[ID_FIELD]);
   var cid = Number(feature.properties.circle_id);
   if (!feature.geometry || !feature.geometry.coordinates) {
@@ -47,7 +55,7 @@ var rows = data.features.map(function(feature) {
 }).sort(function(a,b) {return a.id.localeCompare(b.id);});
 
 var seen={};var counts={13:0,16:0,21:0,33:0};
-rows.forEach(function(r) {
+allRows.forEach(function(r) {
   if (seen[r.id]) throw Error('Duplicate verification ID: '+r.id);
   seen[r.id]=true;
   if (!(r.cid in counts)) throw Error('Unexpected circle '+r.cid);
@@ -56,6 +64,25 @@ rows.forEach(function(r) {
 Object.keys(EXPECTED).forEach(function(k) {
   if (counts[k] !== EXPECTED[k]) throw Error('Wrong polygon count in circle '+k);
 });
+// Verify every known duplicate exists and has same circle and near-identical geometry.
+Object.keys(DUPLICATE_OF).forEach(function(duplicateId) {
+  var originalId=DUPLICATE_OF[duplicateId];
+  var a=allRows.filter(function(r){return r.id===originalId;})[0];
+  var b=allRows.filter(function(r){return r.id===duplicateId;})[0];
+  if(!a || !b || a.cid!==13 || b.cid!==13) throw Error('Missing/misassigned duplicate '+duplicateId);
+  var dx=(a.center[0]-b.center[0])*111320*Math.cos(a.center[1]*Math.PI/180);
+  var dy=(a.center[1]-b.center[1])*110574;
+  if(Math.sqrt(dx*dx+dy*dy)>0.01) throw Error('Duplicate geometry changed: '+duplicateId);
+});
+var rows=allRows.filter(function(r){return !DUPLICATE_OF[r.id];});
+if(rows.length!==39)throw Error('Expected 39 unique geometries; got '+rows.length);
+var uniqueCounts={13:0,16:0,21:0,33:0};
+rows.forEach(function(r){uniqueCounts[r.cid]++;});
+Object.keys(EXPECTED_UNIQUE).forEach(function(k){
+  if(uniqueCounts[k]!==EXPECTED_UNIQUE[k])throw Error('Wrong unique count in circle '+k);
+});
+print('VERIFIED 47 source IDs / 39 unique crowns / 8 exact duplicate pairs.');
+print('Duplicate ID mapping:',DUPLICATE_OF);
 
 // Geometry audit: exact duplicate shapes, and bounding boxes closer than 0.25 m.
 var equalShapes=[],closeBoxes=[];
@@ -70,9 +97,9 @@ rows.forEach(function(a,i) {
     if (Math.sqrt(dx*dx+dy*dy)<0.25) closeBoxes.push(a.id+' ~ '+b.id);
   });
 });
-print('NB06 v4 — direct geometry mode. Feature count:',rows.length);
+print('NB06 v4 — direct geometry mode. Unique feature count:',rows.length);
 print('Exact duplicate geometry pairs:',equalShapes);
-print('Specific pair C13_V00012/C13_V00020:', rows.filter(function(r){return r.id==='C13_V00012'||r.id==='C13_V00020';}).map(function(r){return {id:r.id,center:r.center,extent:r.extent};}));
+print('Specific pair C13_V00012/C13_V00020:', allRows.filter(function(r){return r.id==='C13_V00012'||r.id==='C13_V00020';}).map(function(r){return {id:r.id,center:r.center,extent:r.extent};}));
 print('Nearly identical centers (<0.25 m):',closeBoxes);
 print('Selected features (first 16):',rows.slice(0,16).map(function(r) {
   return {id:r.id,circle:r.cid,center:r.center,extent:r.extent};
@@ -90,18 +117,18 @@ var status=ui.Label('');
 var csvLink=ui.Label('',{color:'blue'});
 var csvPreview=ui.Label('',{whiteSpace:'pre-wrap',fontSize:'10px',shown:false});
 var jump=ui.Select({
-  items:rows.map(function(r,i) {return {label:(i+1)+' / 47: '+r.id,value:String(i)};}),
+  items:rows.map(function(r,i) {return {label:(i+1)+' / 39: '+r.id,value:String(i)};}),
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v4)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Musanga — verification (v5 · deduplicated)',{fontSize:'19px',fontWeight:'bold'}));
 side.add(ui.Label('The RED polygon is the only active candidate. Other verification polygons are intentionally hidden.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
 
 function show(n) {
   if(n<0 || n>=rows.length) {
-    status.setValue(n>=rows.length?'End of 47. Download your CSV.':'Already at first polygon.');
+    status.setValue(n>=rows.length?'End of 39 unique polygons. Download CSV.':'Already at first polygon.');
     return;
   }
   index=n;
@@ -124,7 +151,7 @@ function show(n) {
   idLabel.setValue(r.id+'   (circle '+r.cid+')');
   coordLabel.setValue('Longitude '+r.center[0].toFixed(7)+
     ' | Latitude '+r.center[1].toFixed(7));
-  progress.setValue('Candidate '+(index+1)+'/47 | classified '+Object.keys(answers).length+'/47'
+  progress.setValue('Candidate '+(index+1)+'/39 | classified '+Object.keys(answers).length+'/39'
     +' | '+(answers[r.id] || 'UNREVIEWED'));
   status.setValue('');
   print('SHOW',r.id,'circle',r.cid,'bbox',r.extent);
@@ -133,7 +160,7 @@ function record(label) {
   answers[rows[index].id]=label;
   if(index<rows.length-1) show(index+1);
   else {
-    progress.setValue('End of 47: '+Object.keys(answers).length+'/47 classified');
+    progress.setValue('End of 39: '+Object.keys(answers).length+'/47 classified');
     status.setValue('Final polygon recorded. Prepare CSV below.');
   }
 }
@@ -151,16 +178,20 @@ side.add(btn('Clear current answer',function(){delete answers[rows[index].id];sh
 
 function csvEscape(value) {return '"'+String(value).replace(/"/g,'""')+'"';}
 function makeCSV() {
-  var lines=['verification_id,circle_id,classification'];
-  rows.forEach(function(r) {
-    lines.push(csvEscape(r.id)+','+r.cid+','+(answers[r.id]||'unreviewed'));
+  // Export ALL original 47 identifiers, including the eight aliases, but
+  // ask the user to classify only 39 unique crown geometries.
+  var lines=['verification_id,circle_id,classification,canonical_id,is_duplicate'];
+  allRows.forEach(function(r) {
+    var canonical=DUPLICATE_OF[r.id] || r.id;
+    lines.push(csvEscape(r.id)+','+r.cid+','+(answers[canonical]||'unreviewed')+
+      ','+csvEscape(canonical)+','+(DUPLICATE_OF[r.id] ? 'true':'false'));
   });
   var csv=lines.join('\n')+'\n';
   csvPreview.setValue(csv);
   csvPreview.style().set('shown',true);
-  csvLink.setValue('Download 47-row CSV');
+  csvLink.setValue('Download 47-row CSV (39 unique + 8 aliases)');
   csvLink.setUrl('data:text/csv;charset=utf-8,'+encodeURIComponent(csv));
-  status.setValue('CSV prepared immediately. Click download link; if blocked, select and copy the preview.');
+  status.setValue('47 original IDs preserved; 8 duplicates inherit their canonical answer.');
 }
 side.add(btn('Prepare CSV download',makeCSV));
 side.add(csvLink);side.add(status);side.add(csvPreview);
