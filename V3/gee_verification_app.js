@@ -36,24 +36,45 @@ if (!ID_FIELD || fields.indexOf('circle_id') < 0) {
 
 // Coordinates come from the SAME feature as ID and circle.
 // GeoJSON geometry is passed directly to ee.Geometry when displayed.
+var rawFC = ee.FeatureCollection(POLYGON_ASSET);
+var missingGeometryIds = [];
 var allRows = data.features.map(function(feature) {
   var id = String(feature.properties[ID_FIELD]);
   var cid = Number(feature.properties.circle_id);
-  if (!feature.geometry || !feature.geometry.coordinates) {
-    throw Error('Missing geometry for ' + id);
+  var geom = feature.geometry;
+  if (!geom || !geom.coordinates || !geom.coordinates.length) {
+    // Bulk Earth Engine collection metadata sometimes omits feature geometry.
+    // Attempt an independent retrieval by ID before marking unavailable.
+    try {
+      geom = ee.Feature(rawFC.filter(ee.Filter.eq(ID_FIELD,id)).first())
+        .geometry().getInfo();
+      if (!geom || !geom.coordinates || !geom.coordinates.length) geom = null;
+    } catch (ex) {
+      geom = null;
+      print('Geometry lookup failed for '+id+':', String(ex));
+    }
+  }
+  if (!geom) {
+    missingGeometryIds.push(id);
+    return {id:id,cid:cid,geometry:null,extent:null,center:null};
   }
   var xs=[],ys=[];
   function walk(c) {
+    if (!Array.isArray(c) || !c.length) return;
     if (typeof c[0] === 'number') {xs.push(c[0]);ys.push(c[1]);}
     else c.forEach(walk);
   }
-  walk(feature.geometry.coordinates);
+  walk(geom.coordinates);
+  if (!xs.length) {
+    missingGeometryIds.push(id);
+    return {id:id,cid:cid,geometry:null,extent:null,center:null};
+  }
   var extent=[Math.min.apply(null,xs),Math.min.apply(null,ys),
               Math.max.apply(null,xs),Math.max.apply(null,ys)];
-  return {id:id,cid:cid,geometry:feature.geometry,
+  return {id:id,cid:cid,geometry:geom,
     extent:extent,center:[(extent[0]+extent[2])/2,(extent[1]+extent[3])/2]};
 }).sort(function(a,b) {return a.id.localeCompare(b.id);});
-
+print('Features with no retrievable polygon geometry:', missingGeometryIds);
 var seen={};var counts={13:0,16:0,21:0,33:0};
 allRows.forEach(function(r) {
   if (seen[r.id]) throw Error('Duplicate verification ID: '+r.id);
@@ -74,14 +95,17 @@ Object.keys(DUPLICATE_OF).forEach(function(duplicateId) {
   var dy=(a.center[1]-b.center[1])*110574;
   if(Math.sqrt(dx*dx+dy*dy)>0.01) throw Error('Duplicate geometry changed: '+duplicateId);
 });
-var rows=allRows.filter(function(r){return !DUPLICATE_OF[r.id];});
-if(rows.length!==39)throw Error('Expected 39 unique geometries; got '+rows.length);
+var rows=allRows.filter(function(r){return !DUPLICATE_OF[r.id] && r.geometry;});
+var missingCanonical=allRows.filter(function(r){return !DUPLICATE_OF[r.id] && !r.geometry;});
+if(rows.length+missingCanonical.length!==39) throw Error('Incorrect source polygon count after deduplication');
+if(missingCanonical.length) print('UNAVAILABLE for classification (source geometry missing):',
+  missingCanonical.map(function(r){return r.id;}));
 var uniqueCounts={13:0,16:0,21:0,33:0};
 rows.forEach(function(r){uniqueCounts[r.cid]++;});
 Object.keys(EXPECTED_UNIQUE).forEach(function(k){
-  if(uniqueCounts[k]!==EXPECTED_UNIQUE[k])throw Error('Wrong unique count in circle '+k);
+  if(uniqueCounts[k]+missingCanonical.filter(function(r){return String(r.cid)===String(k);}).length!==EXPECTED_UNIQUE[k])throw Error('Wrong unique count in circle '+k);
 });
-print('VERIFIED 47 source IDs / 39 unique crowns / 8 exact duplicate pairs.');
+print('47 source IDs / 39 canonical IDs / '+rows.length+' displayable geometries / 8 duplicate pairs.');
 print('Duplicate ID mapping:',DUPLICATE_OF);
 
 // Geometry audit: exact duplicate shapes, and bounding boxes closer than 0.25 m.
@@ -117,18 +141,18 @@ var status=ui.Label('');
 var csvLink=ui.Label('',{color:'blue'});
 var csvPreview=ui.Label('',{whiteSpace:'pre-wrap',fontSize:'10px',shown:false});
 var jump=ui.Select({
-  items:rows.map(function(r,i) {return {label:(i+1)+' / 39: '+r.id,value:String(i)};}),
+  items:rows.map(function(r,i) {return {label:(i+1)+' / '+rows.length+': '+r.id,value:String(i)};}),
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v5 · deduplicated)',{fontSize:'19px',fontWeight:'bold'}));
-side.add(ui.Label('The RED polygon is the only active candidate. Other verification polygons are intentionally hidden.'));
+side.add(ui.Label('Musanga — verification (v6 · geometry QA)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('The RED polygon is the only active candidate. Missing source geometries are excluded and flagged in CSV.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
 
 function show(n) {
   if(n<0 || n>=rows.length) {
-    status.setValue(n>=rows.length?'End of 39 unique polygons. Download CSV.':'Already at first polygon.');
+    status.setValue(n>=rows.length?'End of displayable polygons. Download CSV.':'Already at first polygon.');
     return;
   }
   index=n;
@@ -151,7 +175,7 @@ function show(n) {
   idLabel.setValue(r.id+'   (circle '+r.cid+')');
   coordLabel.setValue('Longitude '+r.center[0].toFixed(7)+
     ' | Latitude '+r.center[1].toFixed(7));
-  progress.setValue('Candidate '+(index+1)+'/39 | classified '+Object.keys(answers).length+'/39'
+  progress.setValue('Candidate '+(index+1)+'/'+rows.length+' | classified '+Object.keys(answers).length+'/'+rows.length
     +' | '+(answers[r.id] || 'UNREVIEWED'));
   status.setValue('');
   print('SHOW',r.id,'circle',r.cid,'bbox',r.extent);
@@ -160,7 +184,7 @@ function record(label) {
   answers[rows[index].id]=label;
   if(index<rows.length-1) show(index+1);
   else {
-    progress.setValue('End of 39: '+Object.keys(answers).length+'/47 classified');
+    progress.setValue('End of "+rows.length+": '+Object.keys(answers).length+'/47 classified');
     status.setValue('Final polygon recorded. Prepare CSV below.');
   }
 }
@@ -183,7 +207,7 @@ function makeCSV() {
   var lines=['verification_id,circle_id,classification,canonical_id,is_duplicate'];
   allRows.forEach(function(r) {
     var canonical=DUPLICATE_OF[r.id] || r.id;
-    lines.push(csvEscape(r.id)+','+r.cid+','+(answers[canonical]||'unreviewed')+
+    lines.push(csvEscape(r.id)+','+r.cid+','+(r.geometry ? (answers[canonical]||'unreviewed') : 'missing_geometry')+
       ','+csvEscape(canonical)+','+(DUPLICATE_OF[r.id] ? 'true':'false'));
   });
   var csv=lines.join('\n')+'\n';
