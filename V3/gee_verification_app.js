@@ -70,23 +70,45 @@ var downloadLink = ui.Label('', {color: 'blue', fontWeight: 'bold'});
 
 panel.add(header).add(intro).add(progress).add(featureLabel).add(answerLabel);
 
+// Cache image and circle layers, and avoid resetting RGB on every classification.
+var CACHED_LAYERS = {};
+var activeCircle = null;
+CIRCLE_IDS.forEach(function(cid) {
+  CACHED_LAYERS[cid] = [
+    ui.Map.Layer(ee.Image(RGB_ASSETS[cid]),
+      {bands: ['b1', 'b2', 'b3'], min: 0, max: 255},
+      'UAV RGB — circle ' + cid, true),
+    ui.Map.Layer(circles.filter(ee.Filter.eq('circle_id', cid))
+      .style({color: '00FFFF', fillColor: '00000000', width: 2}),
+      {}, 'Nadine circle', true),
+    ui.Map.Layer(polygons.filter(ee.Filter.eq('circle_id', cid))
+      .style({color: 'FFFF00', fillColor: '00000000', width: 1}),
+      {}, 'Other verification polygons', true)
+  ];
+});
 function countAnswers() { return Object.keys(answers).length; }
 function render(i) {
   index = ((i % total) + total) % total;
   var id = ids[index];
   var cid = Number(cids[index]);
   var thisPolygon = polygons.filter(ee.Filter.eq(idField, id));
-  var thisCircle = circles.filter(ee.Filter.eq('circle_id', cid));
-  var allCirclePolygons = polygons.filter(ee.Filter.eq('circle_id', cid));
 
-  var rgb = ee.Image(RGB_ASSETS[cid]);
-  map.layers().reset([
-    ui.Map.Layer(rgb, {bands: ['b1', 'b2', 'b3'], min: 0, max: 255}, 'UAV RGB — circle ' + cid, true),
-    ui.Map.Layer(thisCircle.style({color: '00FFFF', fillColor: '00000000', width: 2}), {}, 'Nadine circle', true),
-    ui.Map.Layer(allCirclePolygons.style({color: 'FFFF00', fillColor: '00000000', width: 1}), {}, 'Other verification polygons', true),
-    ui.Map.Layer(thisPolygon.style({color: 'FF0000', fillColor: 'FF000022', width: 3}), {}, 'Selected: ' + id, true)
-  ]);
-  map.centerObject(thisPolygon, 21);
+  var selectedLayer = ui.Map.Layer(
+    thisPolygon.style({color: 'FF0000', fillColor: 'FF000022', width: 3}),
+    {}, 'Selected: ' + id, true
+  );
+  if (activeCircle !== cid) {
+    // Switch the background ONLY when moving to another circle.
+    var baseLayers = CACHED_LAYERS[cid];
+    map.layers().reset([
+      baseLayers[0], baseLayers[1], baseLayers[2], selectedLayer
+    ]);
+    activeCircle = cid;
+  } else {
+    // Preserve RGB and other layers, so browser/GEE map tiles can be reused.
+    map.layers().set(3, selectedLayer);
+  }
+  map.centerObject(thisPolygon, 22);
   progress.setValue('Polygon ' + (index + 1) + ' / ' + total + '  ·  classified ' + countAnswers() + ' / ' + total);
   featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid);
   answerLabel.setValue('Current label: ' + (answers[id] || 'Unreviewed'));
