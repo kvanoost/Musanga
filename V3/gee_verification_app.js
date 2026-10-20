@@ -3,8 +3,8 @@
 // Labels are browser-session-only: download a CSV before closing the app.
 
 var PREFIX = 'projects/musanga-511110/assets/Verification/';
-var POLYGONS_ASSET = PREFIX + 'verification_polygons';
-var CIRCLES_ASSET = PREFIX + 'verification_circles';
+var POLYGONS_ASSET = PREFIX + 'verification_4circles';
+var CIRCLES_ASSET = PREFIX + 'circles_4';
 var CIRCLE_IDS = [13, 16, 21, 33];
 var RGB_ASSETS = {
   13: PREFIX + 'circle_13_UAV_RGB',
@@ -13,9 +13,25 @@ var RGB_ASSETS = {
   33: PREFIX + 'circle_33_UAV_RGB'
 };
 
-var polygons = ee.FeatureCollection(POLYGONS_ASSET).sort('verification_id');
+var rawPolygons = ee.FeatureCollection(POLYGONS_ASSET);
 var circles = ee.FeatureCollection(CIRCLES_ASSET);
-var ids = polygons.aggregate_array('verification_id').getInfo();
+var polygonFields = rawPolygons.first().propertyNames().getInfo();
+print('Verification table fields:', polygonFields);
+// ESRI Shapefile limits field names to 10 characters.
+// After ZIP upload, verification_id typically becomes 'verificati'.
+var idField = polygonFields.indexOf('verification_id') >= 0
+    ? 'verification_id'
+    : (polygonFields.indexOf('verificati') >= 0 ? 'verificati' : null);
+if (!idField) {
+  throw new Error('Neither verification_id nor verificati exists. Available fields: ' +
+                  polygonFields.join(', '));
+}
+if (polygonFields.indexOf('circle_id') < 0) {
+  throw new Error('Missing circle_id field. Available fields: ' + polygonFields.join(', '));
+}
+print('Using verification ID field:', idField);
+var polygons = rawPolygons.sort(idField);
+var ids = polygons.aggregate_array(idField).getInfo();
 var cids = polygons.aggregate_array('circle_id').getInfo();
 var total = ids.length;
 if (total !== 47) {
@@ -59,7 +75,7 @@ function render(i) {
   index = ((i % total) + total) % total;
   var id = ids[index];
   var cid = Number(cids[index]);
-  var thisPolygon = polygons.filter(ee.Filter.eq('verification_id', id));
+  var thisPolygon = polygons.filter(ee.Filter.eq(idField, id));
   var thisCircle = circles.filter(ee.Filter.eq('circle_id', cid));
   var allCirclePolygons = polygons.filter(ee.Filter.eq('circle_id', cid));
 
