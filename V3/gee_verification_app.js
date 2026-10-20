@@ -31,13 +31,22 @@ if (polygonFields.indexOf('circle_id') < 0) {
 }
 print('Using verification ID field:', idField);
 var polygons = rawPolygons.sort(idField);
-var ids = polygons.aggregate_array(idField).getInfo();
-var cids = polygons.aggregate_array('circle_id').getInfo();
-// Fetch centers once. Avoid overlapping asynchronous centerObject requests,
-// which can make the map appear stuck on an earlier polygon.
-var centers = polygons.map(function(f) {
-  return f.set('_review_center', f.geometry().centroid(1).coordinates());
-}).aggregate_array('_review_center').getInfo();
+// Important: all IDs, circle IDs and centroids must come from ONE server-side
+// record list. Separate aggregate_array/map requests can produce a wrong
+// positional association if collection ordering changes.
+var records = polygons.map(function(feature) {
+  return ee.Feature(null, {
+    rid: feature.get(idField),
+    cid: feature.get('circle_id'),
+    xy: feature.geometry().centroid(0.1).coordinates(),
+    area_m2: feature.geometry().area(0.1)
+  });
+}).toList(47).getInfo().map(function(item) { return item.properties; });
+records.sort(function(a,b) {return String(a.rid).localeCompare(String(b.rid));});
+var ids = records.map(function(r) {return r.rid;});
+var cids = records.map(function(r) {return r.cid;});
+var centers = records.map(function(r) {return r.xy;});
+print('VERIFY linked records (first 12):', records.slice(0,12));
 var total = ids.length;
 if (total !== 47) {
   throw new Error('Expected 47 polygons, found ' + total + '. Check verification_polygons asset.');
@@ -56,6 +65,29 @@ CIRCLE_IDS.forEach(function(cid) {
   }
 });
 
+
+// Geometry QA: list geometrically close ID pairs, without automatically dropping
+// potentially distinct overlapping crowns. Coordinates are lon/lat.
+var suspectedPairs = [];
+for (var ia = 0; ia < records.length; ia++) {
+  for (var ib = ia + 1; ib < records.length; ib++) {
+    if (Number(records[ia].cid) !== Number(records[ib].cid)) continue;
+    var dx = (records[ia].xy[0] - records[ib].xy[0]) *
+      111320 * Math.cos(records[ia].xy[1] * Math.PI / 180);
+    var dy = (records[ia].xy[1] - records[ib].xy[1]) * 110574;
+    var distance = Math.sqrt(dx*dx + dy*dy);
+    var ar = Math.min(records[ia].area_m2, records[ib].area_m2) /
+             Math.max(records[ia].area_m2, records[ib].area_m2);
+    if (distance < 2 && ar > 0.8) {
+      suspectedPairs.push({
+        id_1: records[ia].rid, id_2: records[ib].rid,
+        distance_m: Number(distance.toFixed(2)),
+        area_ratio: Number(ar.toFixed(3))
+      });
+    }
+  }
+}
+print('POSSIBLE DUPLICATE GEOMETRIES (near-identical centroids and areas):', suspectedPairs);
 var answers = {};
 var index = 0;
 var finished = false;
@@ -121,7 +153,7 @@ function render(i) {
   var thisPolygon = polygons.filter(ee.Filter.eq(idField, id));
 
   var selectedLayer = ui.Map.Layer(
-    thisPolygon.style({color: 'FF0000', fillColor: 'FF000022', width: 3}),
+    thisPolygon.style({color: 'FF0000', fillColor: 'FF000044', width: 4}),
     {}, 'Selected: ' + id, true
   );
   if (activeCircle !== cid) {
@@ -141,7 +173,8 @@ function render(i) {
   progress.setValue('Polygon ' + (index + 1) + ' / ' + total +
     ' · classified ' + countAnswers() + ' / ' + total +
     (visited[id] > 1 ? ' · REVISIT' : ''));
-  featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid);
+  featureLabel.setValue('ID: ' + id + '    |    Circle: ' + cid + '\\n' +
+    'Center: ' + centers[index][0].toFixed(7) + ', ' + centers[index][1].toFixed(7));
   answerLabel.setValue('Current label: ' + (answers[id] || 'Unreviewed'));
   // Keep previously generated CSV link and copyable backup visible.
   infoLabel.setValue('');
