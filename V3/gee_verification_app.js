@@ -130,6 +130,21 @@ print('Selected features (first 16):',rows.slice(0,16).map(function(r) {
 }));
 
 var answers={},index=0,currentCircle=null;
+// Initialize these once, not inside show(). Image layers are retained between
+// polygon transitions in the same circle, avoiding unnecessary mosaic reloads.
+var circleLayers={};
+[13,16,21,33].forEach(function(cid) {
+  circleLayers[cid]=[
+    ui.Map.Layer(ee.Image(RGB_ASSETS[cid]),
+      {bands:['b1','b2','b3'],min:0,max:255},
+      'UAV RGB circle '+cid,true),
+    ui.Map.Layer(
+      ee.FeatureCollection(CIRCLE_ASSET)
+        .filter(ee.Filter.eq('circle_id',cid))
+        .style({color:'00FFFF',fillColor:'00000000',width:2}),
+      {},'Nadine circle boundary',true)
+  ];
+});
 var map=ui.Map();
 map.setOptions('SATELLITE');
 map.setLocked(false,0,24);
@@ -145,7 +160,7 @@ var jump=ui.Select({
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v6 · geometry QA)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Musanga — verification (v7 · faster mosaics)',{fontSize:'19px',fontWeight:'bold'}));
 side.add(ui.Label('The RED polygon is the only active candidate. Missing source geometries are excluded and flagged in CSV.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
@@ -158,19 +173,24 @@ function show(n) {
   index=n;
   var r=rows[index];
   var geometry=ee.Geometry(r.geometry);
-  // Intentionally rebuild selected geometry on every navigation;
-  // correctness takes priority over marginal redraw speed.
-  var circle=ee.FeatureCollection(CIRCLE_ASSET).filter(ee.Filter.eq('circle_id',r.cid));
+  // Draw each selected polygon from its own actual geometry and ID.
   var selected=ee.FeatureCollection([ee.Feature(geometry,{id:r.id})]);
-  var rgb=ee.Image(RGB_ASSETS[r.cid]);
-  map.layers().reset([
-    ui.Map.Layer(rgb,{bands:['b1','b2','b3'],min:0,max:255},
-                 'UAV RGB circle '+r.cid,true),
-    ui.Map.Layer(circle.style({color:'00FFFF',fillColor:'00000000',width:2}),{},
-                 'Nadine circle boundary',true),
-    ui.Map.Layer(selected.style({color:'FF0000',fillColor:'FF000055',width:4}),{},
-                 'ACTIVE POLYGON: '+r.id,true)
-  ]);
+  var selectedLayer=ui.Map.Layer(
+    selected.style({color:'FF0000',fillColor:'FF000055',width:4}),
+    {},'ACTIVE POLYGON: '+r.id,true
+  );
+
+  if (currentCircle !== r.cid) {
+    // Changing circles: change the UAV mosaic and circle boundary once.
+    // Keep the image layer object stable while reviewing this circle.
+    var baseLayers=circleLayers[r.cid];
+    map.layers().reset([baseLayers[0],baseLayers[1],selectedLayer]);
+    currentCircle=r.cid;
+  } else {
+    // Same circle: preserve the RGB + boundary layer objects and their tiles.
+    // Replace ONLY the red selected polygon layer.
+    map.layers().set(2,selectedLayer);
+  }
   map.setCenter(r.center[0],r.center[1],22);
   idLabel.setValue(r.id+'   (circle '+r.cid+')');
   coordLabel.setValue('Longitude '+r.center[0].toFixed(7)+
@@ -178,7 +198,7 @@ function show(n) {
   progress.setValue('Candidate '+(index+1)+'/'+rows.length+' | classified '+Object.keys(answers).length+'/'+rows.length
     +' | '+(answers[r.id] || 'UNREVIEWED'));
   status.setValue('');
-  print('SHOW',r.id,'circle',r.cid,'bbox',r.extent);
+  // Polygon ID and coordinates above identify the current feature.
 }
 function record(label) {
   answers[rows[index].id]=label;
