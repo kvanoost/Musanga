@@ -184,7 +184,7 @@ function record(label) {
   answers[rows[index].id]=label;
   if(index<rows.length-1) show(index+1);
   else {
-    progress.setValue('End of "+rows.length+": '+Object.keys(answers).length+'/47 classified');
+    progress.setValue('End of '+rows.length+': '+Object.keys(answers).length+'/'+rows.length+' classified');
     status.setValue('Final polygon recorded. Prepare CSV below.');
   }
 }
