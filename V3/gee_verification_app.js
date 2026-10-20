@@ -184,7 +184,7 @@ function exportCSV() {
     lines.push('"' + String(id).replace(/"/g, '""') + '",' +
       String(Number(cids[i])) + ',' + (answers[id] || 'unreviewed'));
   });
-  var csv = lines.join('\\n') + '\\n';
+  var csv = lines.join('\n') + '\n';
   csvBox.setValue(csv);
   csvBox.style().set('shown', true);
   var uri = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
