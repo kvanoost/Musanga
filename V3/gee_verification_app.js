@@ -72,6 +72,7 @@ rows.forEach(function(a,i) {
 });
 print('NB06 v4 — direct geometry mode. Feature count:',rows.length);
 print('Exact duplicate geometry pairs:',equalShapes);
+print('Specific pair C13_V00012/C13_V00020:', rows.filter(function(r){return r.id==='C13_V00012'||r.id==='C13_V00020';}).map(function(r){return {id:r.id,center:r.center,extent:r.extent};}));
 print('Nearly identical centers (<0.25 m):',closeBoxes);
 print('Selected features (first 16):',rows.slice(0,16).map(function(r) {
   return {id:r.id,circle:r.cid,center:r.center,extent:r.extent};
