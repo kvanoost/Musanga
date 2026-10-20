@@ -74,8 +74,13 @@ var featureLabel = ui.Label('', {fontSize: '15px', fontWeight: 'bold'});
 var answerLabel = ui.Label('');
 var infoLabel = ui.Label('');
 var downloadLink = ui.Label('', {color: 'blue', fontWeight: 'bold'});
-var csvBox = ui.Textarea({placeholder: 'Your CSV appears here instantly. You can copy it as a backup.',
-  style: {stretch: 'horizontal', height: '125px', shown: false}});
+// Earth Engine UI has no ui.Textarea; ui.Label supports multiline text.
+var csvBox = ui.Label('', {
+  whiteSpace: 'pre-wrap',
+  fontFamily: 'monospace',
+  fontSize: '11px',
+  shown: false
+});
 var visited = {};
 var jump = ui.Select({items: ids.map(function(id, i) {
   return {label: String(i + 1) + ': ' + String(id), value: String(i)};
