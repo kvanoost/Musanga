@@ -342,7 +342,7 @@ var activeDigitCircle=13;
 var digitStatus=ui.Label('',{whiteSpace:'pre-wrap'});
 var digitCounts=ui.Label('',{fontWeight:'bold'});
 var geojsonLink=ui.Label('',{color:'blue'});
-var geojsonPreview=ui.Textarea({value:'',placeholder:'GeoJSON text appears here after export',style:{stretch:'horizontal',height:'180px',fontSize:'11px',shown:false}});
+var geojsonPreview=ui.Textbox({value:'',placeholder:'Exported GeoJSON — click here, Cmd+A, Cmd+C to copy',style:{stretch:'horizontal',shown:false}});
 var reviewer=ui.Textbox({placeholder:'Reviewer name / code (optional)',
   style:{stretch:'horizontal'}});
 var circlePicker=ui.Select({
@@ -499,7 +499,7 @@ function exportServerDigitization(){
 
 digitizePanel.add(btn('Prepare instant local GeoJSON',exportDigitization));
 digitizePanel.add(btn('Alternative: EE server download (may be slow)',exportServerDigitization));
-digitizePanel.add(ui.Label('Backup: select and copy the GeoJSON text below. Save it as Musanga_crowns.geojson on your computer.',{color:'#555',fontSize:'11px'}));
+digitizePanel.add(ui.Label('Backup: click the text field, Cmd+A then Cmd+C (Mac), and save the copied text as Musanga_crowns.geojson. The field uses one long line.',{color:'#555',fontSize:'11px'}));
 digitizePanel.add(geojsonPreview);
 digitizePanel.add(geojsonLink);
 digitizePanel.add(digitStatus);
