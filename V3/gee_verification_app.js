@@ -357,20 +357,54 @@ digitizePanel.add(ui.Label(
   'Draw every visible Musanga crown in the selected circle. Green polygons are YOUR new annotations; cyan shows the circle boundary. Use the map drawing toolbar to edit vertices or erase polygons.'));
 digitizePanel.add(circlePicker);
 var rgbDiagnostic=ui.Label('',{fontSize:'11px',whiteSpace:'pre-wrap'});
-digitizePanel.add(btn('Check high-resolution RGB for selected circle',function(){
+digitizePanel.add(btn('Diagnose UAV RGB location and coverage',function(){
   var cid=activeDigitCircle;
-  rgbDiagnostic.setValue('Checking EE image asset for circle '+cid+' ...');
   var asset=RGB_ASSETS[cid];
-  ee.Image(asset).bandNames().evaluate(function(bands,error){
-    if(error){
-      rgbDiagnostic.setValue('ERROR loading high-resolution UAV image '+asset+
-        ': '+String(error)+'. Check Earth Engine Assets for this image.');
+  rgbDiagnostic.setValue('Checking spatial overlap and unmasked UAV pixels for circle '+cid+' ...');
+  var circle=ee.Geometry(circleGeometries[cid]);
+  var img=ee.Image(asset);
+  // Asset existence is insufficient: check footprint overlap AND non-masked
+  // pixels inside the selected circle. Use a coarse 2 m diagnostic, not a
+  // full-resolution read of the large UAV raster.
+  var valid=img.select(0).mask().unmask(0).rename('valid');
+  var sample=valid.reduceRegion({
+    reducer:ee.Reducer.mean(),geometry:circle,scale:2,
+    bestEffort:true,maxPixels:1000000,tileScale:4
+  });
+  var overlap=img.geometry().intersection(circle,ee.ErrorMargin(2)).area(2)
+      .divide(circle.area(2));
+  var result=ee.Dictionary({
+    bands:img.bandNames(),
+    overlapFraction:overlap,
+    unmaskedFraction:sample.get('valid'),
+    imageBounds:img.geometry().bounds(2).coordinates(),
+    circleBounds:circle.bounds(2).coordinates(),
+    nominalPixelMetres:img.select(0).projection().nominalScale()
+  });
+  result.evaluate(function(d,error){
+    if(error || !d){
+      rgbDiagnostic.setValue('Circle '+cid+' diagnostic failed: '+
+        String(error||'empty response')+
+        '. Asset: '+asset);
       return;
     }
-    rgbDiagnostic.setValue('RGB asset exists: '+asset+
-      ' | Bands: '+bands.join(', ')+
-      '. If RGB is invisible, inspect whether its footprint and unmasked pixels '+
-      'cover the selected circle. Source clip prepared in NB06.');
+    var hit=Number(d.overlapFraction);
+    var validFraction=(d.unmaskedFraction===null ? 0 : Number(d.unmaskedFraction));
+    var conclusion=hit<0.95 ?
+      'MISMATCH: asset footprint does NOT cover this circle. Check original ortho and asset georeferencing.' :
+      validFraction<0.05 ?
+      'IMAGE MASK ISSUE: footprint overlaps, but RGB has almost no unmasked pixels inside this circle.' :
+      'RGB ASSET OVERLAPS AND HAS VALID PIXELS. Investigate visualization min/max, map layer visibility, or upload RGB band values.';
+    var report='CIRCLE '+cid+' — '+conclusion+
+      '\\nAsset: '+asset+
+      '\\nFootprint overlap: '+(100*hit).toFixed(1)+'%'+
+      '\\nUnmasked pixel fraction (~2 m): '+(100*validFraction).toFixed(1)+'%'+
+      '\\nNative pixel scale: '+Number(d.nominalPixelMetres).toFixed(3)+' m'+
+      '\\nBands: '+d.bands.join(', ')+
+      '\\nAsset bounds: '+JSON.stringify(d.imageBounds)+
+      '\\nCircle bounds: '+JSON.stringify(d.circleBounds);
+    rgbDiagnostic.setValue(report);
+    print('Musanga RGB diagnostic circle '+cid,d);
   });
 }));
 digitizePanel.add(rgbDiagnostic);
