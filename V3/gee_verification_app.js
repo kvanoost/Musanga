@@ -12,8 +12,13 @@ var RGB_ASSETS = {
   13: ROOT + 'circle_13_UAV_RGB',
   16: ROOT + 'circle_16_UAV_RGB',
   21: ROOT + 'circle_21_UAV_RGB',
+  // Corrected NB06 Baego.tif clip, regenerated and re-uploaded 21 October 2026.
   33: ROOT + 'circle_33_UAV_RGB'
 };
+// Expected bounds of the VERIFIED regenerated circle 33 clip (WGS84).
+// Used only for diagnostics; the app still reads the GEE asset by ID.
+var RGB33_EXPECTED_BOUNDS=[26.16730878642385,0.70768336371431,
+                            26.168575028413276,0.7089580408211895];
 var CIRCLE_IDS=[8,12,13,16,21,33];
 var EXPECTED={8:10,12:11,13:8,16:10,21:10,33:11};
 
@@ -390,12 +395,28 @@ digitizePanel.add(btn('Diagnose UAV RGB location and coverage',function(){
     }
     var hit=Number(d.overlapFraction);
     var validFraction=(d.unmaskedFraction===null ? 0 : Number(d.unmaskedFraction));
-    var conclusion=hit<0.95 ?
+    var assetBounds=d.imageBounds[0];
+    var xs=assetBounds.map(function(pt){return Number(pt[0]);});
+    var ys=assetBounds.map(function(pt){return Number(pt[1]);});
+    var bounds=[Math.min.apply(null,xs),Math.min.apply(null,ys),
+                Math.max.apply(null,xs),Math.max.apply(null,ys)];
+    var expectedMatch=true;
+    if(cid===33){
+      for(var k=0;k<4;k++){
+        if(Math.abs(bounds[k]-RGB33_EXPECTED_BOUNDS[k])>0.00015)
+          expectedMatch=false;
+      }
+    }
+    var conclusion=cid===33 && !expectedMatch ?
+      'WRONG/STALE IMAGE ASSET: GEE footprint does not match corrected NB06 Baego clip.' :
+      hit<0.95 ?
       'MISMATCH: asset footprint does NOT cover this circle. Check original ortho and asset georeferencing.' :
       validFraction<0.05 ?
       'IMAGE MASK ISSUE: footprint overlaps, but RGB has almost no unmasked pixels inside this circle.' :
       'RGB ASSET OVERLAPS AND HAS VALID PIXELS. Investigate visualization min/max, map layer visibility, or upload RGB band values.';
     var report='CIRCLE '+cid+' — '+conclusion+
+      (cid===33 ? '\\nMatches corrected NB06 bounds: '+(expectedMatch?'YES':'NO')+
+        '\\nExpected Baego bounds: '+JSON.stringify(RGB33_EXPECTED_BOUNDS) : '')+
       '\\nAsset: '+asset+
       '\\nFootprint overlap: '+(100*hit).toFixed(1)+'%'+
       '\\nUnmasked pixel fraction (~2 m): '+(100*validFraction).toFixed(1)+'%'+
@@ -408,6 +429,11 @@ digitizePanel.add(btn('Diagnose UAV RGB location and coverage',function(){
   });
 }));
 digitizePanel.add(rgbDiagnostic);
+digitizePanel.add(ui.Label(
+  'Circle 33: expected corrected Baego UAV image near 26.168 E, 0.708 N. '+
+  'After asset replacement, select 33 and run the coverage diagnostic; '+
+  'the image must match the NB06 geographic bounds.',
+  {fontSize:'11px',color:'#555'}));
 digitizePanel.add(reviewer);
 digitizePanel.add(digitCounts);
 function annotationCount(cid) {
