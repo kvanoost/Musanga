@@ -445,15 +445,38 @@ function exportDigitization(){
       ' polygon(s) failed or fell outside their circle. Check: '+skipped.join('; '));
     geojsonLink.setValue('');return;
   }
-  var doc={type:'FeatureCollection',name:'Musanga_exhaustive_circle_annotations',
-           features:features};
-  var serialized=JSON.stringify(doc);
-  var url='data:application/geo+json;charset=utf-8,'+encodeURIComponent(serialized);
-  geojsonLink.setValue('Download '+features.length+' drawn crown(s) — GeoJSON');
-  geojsonLink.setUrl(url);
-  digitMessage('Export ready: '+features.length+' polygons. '+
-    'Download the GeoJSON NOW; annotations are not saved automatically. '+
-    'If there are zero polygons, the file records an empty annotation set.');
+  // Use Earth Engine's actual file-download endpoint, not a data: URI.
+  // A data: URI frequently opens GeoJSON directly in the browser instead.
+  if (!features.length) {
+    digitMessage('No crowns have been drawn yet. Draw at least one polygon before exporting.');
+    geojsonLink.setValue('');
+    geojsonLink.setUrl('');
+    return;
+  }
+  var fc=ee.FeatureCollection(features.map(function(f){
+    return ee.Feature(ee.Geometry(f.geometry), f.properties);
+  }));
+  geojsonLink.setValue('Preparing GeoJSON file download ...');
+  geojsonLink.setUrl('');
+  digitMessage('Creating an actual .geojson download link for '+features.length+
+    ' crown polygons. Please wait.');
+  fc.getDownloadURL({
+    format:'geojson',
+    filename:'Musanga_exhaustive_crown_annotations'
+  },function(downloadUrl,error){
+    if(error || !downloadUrl){
+      geojsonLink.setValue('');
+      geojsonLink.setUrl('');
+      digitMessage('GeoJSON export failed: '+String(error||'No download URL returned')+
+        '. Your drawn crowns remain in this browser session.');
+      return;
+    }
+    geojsonLink.setValue('Download '+features.length+' crowns (.geojson file)');
+    geojsonLink.setUrl(downloadUrl);
+    digitMessage('File ready. Click the blue download link; your browser will '+
+      'download Musanga_exhaustive_crown_annotations.geojson. '+
+      'Drawings remain session-local until exported.');
+  });
 }
 digitizePanel.add(btn('Prepare GeoJSON download',exportDigitization));
 digitizePanel.add(geojsonLink);
