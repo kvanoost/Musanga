@@ -284,6 +284,9 @@ side.add(ui.Label('Answers remain only in this browser session. Export before ex
 ui.root.clear();
 ui.root.add(ui.SplitPanel({firstPanel:side,secondPanel:map,orientation:'horizontal',wipe:false}));
 // Start with Yoko circle 13, preserving sorted order within that circle.
-var firstCircle13=rows.findIndex(function(r){return r.cid===13;});
+var firstCircle13=-1;
+for (var i=0;i<rows.length;i++) {
+  if (rows[i].cid===13) {firstCircle13=i;break;}
+}
 if(firstCircle13<0)throw Error('No review polygons for circle 13');
 show(firstCircle13);
