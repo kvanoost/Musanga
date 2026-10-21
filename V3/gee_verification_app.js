@@ -15,10 +15,6 @@ var RGB_ASSETS = {
   // Corrected NB06 Baego.tif clip, regenerated and re-uploaded 21 October 2026.
   33: ROOT + 'circle_33_UAV_RGB'
 };
-// Expected bounds of the VERIFIED regenerated circle 33 clip (WGS84).
-// Used only for diagnostics; the app still reads the GEE asset by ID.
-var RGB33_EXPECTED_BOUNDS=[26.16730878642385,0.70768336371431,
-                            26.168575028413276,0.7089580408211895];
 var CIRCLE_IDS=[8,12,13,16,21,33];
 var EXPECTED={8:10,12:11,13:8,16:10,21:10,33:11};
 
@@ -361,79 +357,6 @@ digitizePanel.add(ui.Label('Objective 2 — exhaustive annotation of one entire 
 digitizePanel.add(ui.Label(
   'Draw every visible Musanga crown in the selected circle. Green polygons are YOUR new annotations; cyan shows the circle boundary. Use the map drawing toolbar to edit vertices or erase polygons.'));
 digitizePanel.add(circlePicker);
-var rgbDiagnostic=ui.Label('',{fontSize:'11px',whiteSpace:'pre-wrap'});
-digitizePanel.add(btn('Diagnose UAV RGB location and coverage',function(){
-  var cid=activeDigitCircle;
-  var asset=RGB_ASSETS[cid];
-  rgbDiagnostic.setValue('Checking spatial overlap and unmasked UAV pixels for circle '+cid+' ...');
-  var circle=ee.Geometry(circleGeometries[cid]);
-  var img=ee.Image(asset);
-  // Asset existence is insufficient: check footprint overlap AND non-masked
-  // pixels inside the selected circle. Use a coarse 2 m diagnostic, not a
-  // full-resolution read of the large UAV raster.
-  var valid=img.select(0).mask().unmask(0).rename('valid');
-  var sample=valid.reduceRegion({
-    reducer:ee.Reducer.mean(),geometry:circle,scale:2,
-    bestEffort:true,maxPixels:1000000,tileScale:4
-  });
-  var overlap=img.geometry().intersection(circle,ee.ErrorMargin(2)).area(2)
-      .divide(circle.area(2));
-  var result=ee.Dictionary({
-    bands:img.bandNames(),
-    overlapFraction:overlap,
-    unmaskedFraction:sample.get('valid'),
-    imageBounds:img.geometry().bounds(2).coordinates(),
-    circleBounds:circle.bounds(2).coordinates(),
-    nominalPixelMetres:img.select(0).projection().nominalScale()
-  });
-  result.evaluate(function(d,error){
-    if(error || !d){
-      rgbDiagnostic.setValue('Circle '+cid+' diagnostic failed: '+
-        String(error||'empty response')+
-        '. Asset: '+asset);
-      return;
-    }
-    var hit=Number(d.overlapFraction);
-    var validFraction=(d.unmaskedFraction===null ? 0 : Number(d.unmaskedFraction));
-    var assetBounds=d.imageBounds[0];
-    var xs=assetBounds.map(function(pt){return Number(pt[0]);});
-    var ys=assetBounds.map(function(pt){return Number(pt[1]);});
-    var bounds=[Math.min.apply(null,xs),Math.min.apply(null,ys),
-                Math.max.apply(null,xs),Math.max.apply(null,ys)];
-    var expectedMatch=true;
-    if(cid===33){
-      for(var k=0;k<4;k++){
-        if(Math.abs(bounds[k]-RGB33_EXPECTED_BOUNDS[k])>0.00015)
-          expectedMatch=false;
-      }
-    }
-    var conclusion=cid===33 && !expectedMatch ?
-      'WRONG/STALE IMAGE ASSET: GEE footprint does not match corrected NB06 Baego clip.' :
-      hit<0.95 ?
-      'MISMATCH: asset footprint does NOT cover this circle. Check original ortho and asset georeferencing.' :
-      validFraction<0.05 ?
-      'IMAGE MASK ISSUE: footprint overlaps, but RGB has almost no unmasked pixels inside this circle.' :
-      'RGB ASSET OVERLAPS AND HAS VALID PIXELS. Investigate visualization min/max, map layer visibility, or upload RGB band values.';
-    var report='CIRCLE '+cid+' — '+conclusion+
-      (cid===33 ? '\\nMatches corrected NB06 bounds: '+(expectedMatch?'YES':'NO')+
-        '\\nExpected Baego bounds: '+JSON.stringify(RGB33_EXPECTED_BOUNDS) : '')+
-      '\\nAsset: '+asset+
-      '\\nFootprint overlap: '+(100*hit).toFixed(1)+'%'+
-      '\\nUnmasked pixel fraction (~2 m): '+(100*validFraction).toFixed(1)+'%'+
-      '\\nNative pixel scale: '+Number(d.nominalPixelMetres).toFixed(3)+' m'+
-      '\\nBands: '+d.bands.join(', ')+
-      '\\nAsset bounds: '+JSON.stringify(d.imageBounds)+
-      '\\nCircle bounds: '+JSON.stringify(d.circleBounds);
-    rgbDiagnostic.setValue(report);
-    print('Musanga RGB diagnostic circle '+cid,d);
-  });
-}));
-digitizePanel.add(rgbDiagnostic);
-digitizePanel.add(ui.Label(
-  'Circle 33: expected corrected Baego UAV image near 26.168 E, 0.708 N. '+
-  'After asset replacement, select 33 and run the coverage diagnostic; '+
-  'the image must match the NB06 geographic bounds.',
-  {fontSize:'11px',color:'#555'}));
 digitizePanel.add(reviewer);
 digitizePanel.add(digitCounts);
 function annotationCount(cid) {
@@ -559,41 +482,7 @@ function exportDigitization(){
     'No server request was made. Full drawn boundaries are preserved; '+
     'clip crowns to circle boundaries later in Colab.');
 }
-function exportServerDigitization(){
-  tools.stop();
-  var features=[];
-  CIRCLE_IDS.forEach(function(cid){
-    var layer=annotationLayers[cid].geometries();
-    var circle=ee.Geometry(circleGeometries[cid]);
-    for(var i=0;i<layer.length();i++){
-      var geom=ee.Geometry(layer.get(i)).intersection(circle,ee.ErrorMargin(0.1));
-      features.push(ee.Feature(geom,{
-        crown_id:'C'+cid+'_M'+('00000'+(i+1)).slice(-5),
-        circle_id:cid,class_name:'Musanga',
-        reviewer:reviewer.getValue()||'',
-        annotation_method:'manual_exhaustive',
-        annotation_status:'draft'
-      }));
-    }
-  });
-  if(!features.length){digitMessage('No crowns drawn.');return;}
-  digitMessage('Requesting server-generated download URL. This can be slow.');
-  var fc=ee.FeatureCollection(features);
-  fc.getDownloadURL({format:'geojson',
-    filename:'Musanga_exhaustive_crown_annotations'},function(url,error){
-    if(error || !url){
-      digitMessage('Server export failed: '+String(error||'No URL')+
-        '. Use instant local GeoJSON text above instead.');
-      return;
-    }
-    geojsonLink.setValue('Download server-clipped .geojson');
-    geojsonLink.setUrl(url);
-    digitMessage('Server-generated download URL is ready.');
-  });
-}
-
 digitizePanel.add(btn('Prepare instant local GeoJSON',exportDigitization));
-digitizePanel.add(btn('Alternative: EE server download (may be slow)',exportServerDigitization));
 digitizePanel.add(ui.Label('Backup: click the text field, Cmd+A then Cmd+C (Mac), and save the copied text as Musanga_crowns.geojson. The field uses one long line.',{color:'#555',fontSize:'11px'}));
 digitizePanel.add(geojsonPreview);
 digitizePanel.add(geojsonLink);
