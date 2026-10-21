@@ -1,4 +1,4 @@
-// MUSANGA — six-circle verification v9.
+// MUSANGA — six-circle verification v10.
 // 60 unique polygons (source NB06: 68 features, 8 duplicate aliases removed).
 // Lazy-load each circle's RGB once; cache feature outlines; bright yellow transparent polygon.
 // Export classifications of 60 unique polygons; original mapping stays in NB06 CSV.
@@ -82,7 +82,7 @@ Object.keys(EXPECTED).forEach(function(k) {
     ' expected '+EXPECTED[k]+' polygons; received '+counts[k]);
 });
 var rows=allRows.filter(function(r){return !!r.geometry;});
-print('Musanga v9: 60 unique features in 6 circles');
+print('Musanga v10: 60 unique features in 6 circles');
 print('Per-circle feature counts:',counts);
 print('Missing geometries (excluded from review, flagged in export):',missingGeometryIds);
 if (rows.length!==60) print('WARNING: only '+rows.length+' of 60 geometries displayable.');
@@ -123,7 +123,7 @@ function getSelectedLayer(r) {
 var map=ui.Map();
 map.setOptions('SATELLITE');
 map.setLocked(false,0,24);
-var side=ui.Panel({style:{width:'365px',padding:'10px'}});
+var side=ui.Panel({style:{width:'390px',padding:'10px'}});
 var progress=ui.Label('',{fontWeight:'bold'});
 var idLabel=ui.Label('',{fontWeight:'bold',fontSize:'16px'});
 var coordLabel=ui.Label('',{fontSize:'11px'});
@@ -135,10 +135,69 @@ var jump=ui.Select({
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v9 · fast review)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Musanga — verification (v10 · close-up inspector)',{fontSize:'19px',fontWeight:'bold'}));
 side.add(ui.Label('Bright yellow outline = active polygon (fully transparent fill). Images are kept loaded within each circle.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
+
+// Earth Engine's interactive map cannot zoom indefinitely, but ui.Thumbnail
+// renders a tight geographic crop at 900 px without the map tile zoom limit.
+// This is an on-demand, high-magnification view, not new sensor resolution.
+var inspector=ui.Panel({style:{stretch:'horizontal'}});
+var inspectMode=ui.Select({
+  items:[
+    {label:'Whole crown + context',value:'whole'},
+    {label:'Centre ×2',value:'double'},
+    {label:'Centre ×4',value:'quad'}
+  ],
+  value:'whole',style:{stretch:'horizontal'}
+});
+function showCloseup() {
+  var r=rows[index];
+  inspector.clear();
+  inspector.add(ui.Label('Preparing close-up '+r.id+' ...'));
+  // The polygon extent defines an initial frame. Convert metres to longitude
+  // and latitude so the requested thumbnail region is approximately square.
+  var latitude=r.center[1];
+  var metresPerLon=111320*Math.cos(latitude*Math.PI/180);
+  var metresPerLat=110574;
+  var widthM=(r.extent[2]-r.extent[0])*metresPerLon;
+  var heightM=(r.extent[3]-r.extent[1])*metresPerLat;
+  var sizeM=Math.max(3,Math.max(widthM,heightM)*1.4);
+  var magnify=inspectMode.getValue()==='double'?2:
+              inspectMode.getValue()==='quad'?4:1;
+  var halfM=sizeM/(2*magnify);
+  var lonHalf=halfM/metresPerLon;
+  var latHalf=halfM/metresPerLat;
+  var region=ee.Geometry.Rectangle([
+    r.center[0]-lonHalf,r.center[1]-latHalf,
+    r.center[0]+lonHalf,r.center[1]+latHalf
+  ],null,false);
+  var rgb=ee.Image(RGB_ASSETS[r.cid]).visualize({
+    bands:['b1','b2','b3'],min:0,max:255
+  });
+  // Paint boundaries without opaque polygon fill.
+  var outline=ee.Image().byte().paint(
+    ee.FeatureCollection([ee.Feature(ee.Geometry(r.geometry))]),1,2
+  ).selfMask().visualize({palette:['FFFF00']});
+  var picture=ui.Thumbnail({
+    image:rgb.blend(outline),
+    params:{region:region,dimensions:'900x900',format:'png'},
+    style:{width:'360px',height:'360px',margin:'4px 0 4px 0'}
+  });
+  inspector.clear();
+  inspector.add(ui.Label('Close-up: '+r.id+' | '+inspectMode.getValue()+
+    ' | '+sizeM.toFixed(1)+' m initial frame'));
+  inspector.add(picture);
+  inspector.add(ui.Label('The image is magnified, not higher native resolution.',
+    {color:'gray',fontSize:'11px'}));
+}
+side.add(ui.Label('Crown close-up (beyond map zoom 24)',
+  {fontWeight:'bold',fontSize:'14px'}));
+side.add(inspectMode);
+side.add(ui.Button({label:'Show enlarged crown',onClick:showCloseup,
+  style:{stretch:'horizontal'}}));
+side.add(inspector);
 
 function show(n) {
   if(n<0 || n>=rows.length) {
@@ -146,6 +205,8 @@ function show(n) {
     return;
   }
   index=n;
+  inspector.clear();
+  inspector.add(ui.Label('Press “Show enlarged crown” for this polygon.'));
   var r=rows[index];
   var selectedLayer=getSelectedLayer(r);
 
