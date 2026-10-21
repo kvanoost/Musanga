@@ -356,6 +356,24 @@ digitizePanel.add(ui.Label('Objective 2 — exhaustive annotation of one entire 
 digitizePanel.add(ui.Label(
   'Draw every visible Musanga crown in the selected circle. Green polygons are YOUR new annotations; cyan shows the circle boundary. Use the map drawing toolbar to edit vertices or erase polygons.'));
 digitizePanel.add(circlePicker);
+var rgbDiagnostic=ui.Label('',{fontSize:'11px',whiteSpace:'pre-wrap'});
+digitizePanel.add(btn('Check high-resolution RGB for selected circle',function(){
+  var cid=activeDigitCircle;
+  rgbDiagnostic.setValue('Checking EE image asset for circle '+cid+' ...');
+  var asset=RGB_ASSETS[cid];
+  ee.Image(asset).bandNames().evaluate(function(bands,error){
+    if(error){
+      rgbDiagnostic.setValue('ERROR loading high-resolution UAV image '+asset+
+        ': '+String(error)+'. Check Earth Engine Assets for this image.');
+      return;
+    }
+    rgbDiagnostic.setValue('RGB asset exists: '+asset+
+      ' | Bands: '+bands.join(', ')+
+      '. If RGB is invisible, inspect whether its footprint and unmasked pixels '+
+      'cover the selected circle. Source clip prepared in NB06.');
+  });
+}));
+digitizePanel.add(rgbDiagnostic);
 digitizePanel.add(reviewer);
 digitizePanel.add(digitCounts);
 function annotationCount(cid) {
@@ -382,7 +400,7 @@ function activateDigitCircle(cid){
   refreshDigitCounts();
   digitMessage('Circle '+cid+' ready. Zoom in, then press Draw new crown. '+
     'Draw all Musanga crowns, including those crossing the cyan boundary. '+
-    'Their geometries will be clipped to the circle when exported.');
+    'Instant GeoJSON export preserves full polygons; clip them to the circle in Colab.');
   geojsonLink.setValue('');
   geojsonLink.setUrl('');
 }
@@ -413,6 +431,23 @@ digitizePanel.add(ui.Label('Save polygons as GeoJSON',
   {fontWeight:'bold',fontSize:'14px'}));
 digitizePanel.add(ui.Label(
   'Fast local export preserves all drawn coordinates (including portions beyond the circle boundary). Clip to the associated circle when importing in Colab. Copy/save the text if your browser blocks the direct link.'));
+// Standard RFC 7946-style GeoJSON coordinates from local drawing tools.
+// Earth Engine toGeoJSON() may omit the closing vertex and adds EE-specific
+// `geodesic` / `evenOdd` flags. Close rings before exporting to GIS.
+function standardPolygonGeoJSON(geometry) {
+  if (!geometry || !geometry.coordinates ||
+      ['Polygon','MultiPolygon'].indexOf(geometry.type)<0)
+    throw Error('Expected a drawn Polygon or MultiPolygon');
+  var coords=JSON.parse(JSON.stringify(geometry.coordinates));
+  function closeRing(ring) {
+    if (ring.length<3)throw Error('Polygon ring has fewer than three vertices');
+    var a=ring[0],z=ring[ring.length-1];
+    if(a[0]!==z[0] || a[1]!==z[1])ring.push([a[0],a[1]]);
+  }
+  if(geometry.type==='Polygon')coords.forEach(closeRing);
+  else coords.forEach(function(poly){poly.forEach(closeRing);});
+  return {type:geometry.type,coordinates:coords};
+}
 function exportDigitization(){
   tools.stop();
   // Serialize literal user-drawn polygon coordinates entirely client-side.
@@ -424,7 +459,7 @@ function exportDigitization(){
     CIRCLE_IDS.forEach(function(cid){
       var geometries=annotationLayers[cid].geometries();
       for(var i=0;i<geometries.length();i++){
-        var geometry=ee.Geometry(geometries.get(i)).toGeoJSON();
+        var geometry=standardPolygonGeoJSON(ee.Geometry(geometries.get(i)).toGeoJSON());
         if(!geometry || !geometry.coordinates)
           throw Error('Missing local coordinates: circle '+cid+' polygon '+(i+1));
         features.push({type:'Feature',properties:{
