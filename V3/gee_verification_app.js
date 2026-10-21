@@ -1,6 +1,6 @@
-// MUSANGA — six-circle verification v8.
+// MUSANGA — six-circle verification v9.
 // 60 unique polygons (source NB06: 68 features, 8 duplicate aliases removed).
-// Cache RGB per circle; selected polygon outline is transparent inside.
+// Lazy-load each circle's RGB once; cache feature outlines; bright yellow transparent polygon.
 // Export classifications of 60 unique polygons; original mapping stays in NB06 CSV.
 
 var ROOT = 'projects/musanga-511110/assets/Verification/';
@@ -82,7 +82,7 @@ Object.keys(EXPECTED).forEach(function(k) {
     ' expected '+EXPECTED[k]+' polygons; received '+counts[k]);
 });
 var rows=allRows.filter(function(r){return !!r.geometry;});
-print('Musanga v8: 60 unique features in 6 circles');
+print('Musanga v9: 60 unique features in 6 circles');
 print('Per-circle feature counts:',counts);
 print('Missing geometries (excluded from review, flagged in export):',missingGeometryIds);
 if (rows.length!==60) print('WARNING: only '+rows.length+' of 60 geometries displayable.');
@@ -91,18 +91,35 @@ var answers={},index=0,currentCircle=null;
 // Initialize these once, not inside show(). Image layers are retained between
 // polygon transitions in the same circle, avoiding unnecessary mosaic reloads.
 var circleLayers={};
-CIRCLE_IDS.forEach(function(cid) {
-  circleLayers[cid]=[
-    ui.Map.Layer(ee.Image(RGB_ASSETS[cid]),
-      {bands:['b1','b2','b3'],min:0,max:255},
-      'UAV RGB circle '+cid,true),
-    ui.Map.Layer(
-      ee.FeatureCollection(CIRCLE_ASSET)
-        .filter(ee.Filter.eq('circle_id',cid))
-        .style({color:'00FFFF',fillColor:'00000000',width:2}),
-      {},'Nadine circle boundary',true)
-  ];
-});
+var selectedLayers={};
+function getCircleLayers(cid) {
+  if (!circleLayers[cid]) {
+    // Lazily create RGB + boundary only for a visited circle.
+    circleLayers[cid]=[
+      ui.Map.Layer(ee.Image(RGB_ASSETS[cid]),
+        {bands:['b1','b2','b3'],min:0,max:255},
+        'UAV RGB circle '+cid,true),
+      ui.Map.Layer(
+        ee.FeatureCollection(CIRCLE_ASSET)
+          .filter(ee.Filter.eq('circle_id',cid))
+          .style({color:'00FFFF',fillColor:'00000000',width:2}),
+        {},'Nadine circle boundary',true)
+    ];
+  }
+  return circleLayers[cid];
+}
+function getSelectedLayer(r) {
+  if (!selectedLayers[r.id]) {
+    // Cached per-ID, sourced from that ID's geometry. No ID-to-polygon lookup.
+    var feature=ee.Feature(ee.Geometry(r.geometry),{verify_id:r.id});
+    selectedLayers[r.id]=ui.Map.Layer(
+      ee.FeatureCollection([feature]).style({
+        color:'FFFF00',fillColor:'00000000',width:3
+      }),{},'ACTIVE POLYGON: '+r.id,true
+    );
+  }
+  return selectedLayers[r.id];
+}
 var map=ui.Map();
 map.setOptions('SATELLITE');
 map.setLocked(false,0,24);
@@ -118,8 +135,8 @@ var jump=ui.Select({
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v8 · six circles)',{fontSize:'19px',fontWeight:'bold'}));
-side.add(ui.Label('Red outline = active polygon (transparent fill). RGB mosaic stays loaded within a circle.'));
+side.add(ui.Label('Musanga — verification (v9 · fast review)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Bright yellow outline = active polygon (fully transparent fill). Images are kept loaded within each circle.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
 
@@ -130,18 +147,12 @@ function show(n) {
   }
   index=n;
   var r=rows[index];
-  var geometry=ee.Geometry(r.geometry);
-  // Draw each selected polygon from its own actual geometry and ID.
-  var selected=ee.FeatureCollection([ee.Feature(geometry,{id:r.id})]);
-  var selectedLayer=ui.Map.Layer(
-    selected.style({color:'FF0000',fillColor:'00000000',width:3}),
-    {},'ACTIVE POLYGON: '+r.id,true
-  );
+  var selectedLayer=getSelectedLayer(r);
 
   if (currentCircle !== r.cid) {
     // Changing circles: change the UAV mosaic and circle boundary once.
     // Keep the image layer object stable while reviewing this circle.
-    var baseLayers=circleLayers[r.cid];
+    var baseLayers=getCircleLayers(r.cid);
     map.layers().reset([baseLayers[0],baseLayers[1],selectedLayer]);
     currentCircle=r.cid;
   } else {
