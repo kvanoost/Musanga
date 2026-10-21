@@ -409,64 +409,98 @@ digitizePanel.add(btn('Undo most recently drawn polygon in this circle',function
     digitMessage('Last polygon removed. Export again after edits.');
   } else digitMessage('There are no polygons in this circle.');
 }));
-digitizePanel.add(ui.Label('Export polygons as GeoJSON',
+digitizePanel.add(ui.Label('Save polygons as GeoJSON',
   {fontWeight:'bold',fontSize:'14px'}));
 digitizePanel.add(ui.Label(
-  'Exports all six circle layers as one GeoJSON FeatureCollection. Only the portion within each circle is saved. Export before closing or refreshing this browser tab.'));
+  'Fast local export preserves all drawn coordinates (including portions beyond the circle boundary). Clip to the associated circle when importing in Colab. Copy/save the text if your browser blocks the direct link.'));
 function exportDigitization(){
   tools.stop();
-  // Build one lazy FeatureCollection. Do NOT call getInfo() for each crown:
-  // that previously required two blocking server round-trips per polygon.
-  var features=[],total=0;
+  // Serialize literal user-drawn polygon coordinates entirely client-side.
+  // No getInfo(), intersection(), area(), or FeatureCollection.getDownloadURL().
+  // Earth Engine Apps cannot reliably force a local download from a data URL;
+  // therefore provide editable GeoJSON text for immediate, lossless saving too.
+  var features=[];
+  try {
+    CIRCLE_IDS.forEach(function(cid){
+      var geometries=annotationLayers[cid].geometries();
+      for(var i=0;i<geometries.length();i++){
+        var geometry=ee.Geometry(geometries.get(i)).toGeoJSON();
+        if(!geometry || !geometry.coordinates)
+          throw Error('Missing local coordinates: circle '+cid+' polygon '+(i+1));
+        features.push({type:'Feature',properties:{
+          crown_id:'C'+cid+'_M'+('00000'+(i+1)).slice(-5),
+          circle_id:cid,
+          class_name:'Musanga',
+          annotation_method:'manual_exhaustive',
+          reviewer:reviewer.getValue()||'',
+          annotation_status:'draft',
+          clip_policy:'full_delineation_preserved; clip to circle on import'
+        },geometry:geometry});
+      }
+    });
+  }catch(err){
+    digitMessage('Local GeoJSON serialization failed: '+String(err)+
+      '. Drawings are unchanged. Try the Earth Engine export fallback below.');
+    geojsonLink.setValue('');geojsonLink.setUrl('');
+    return;
+  }
+  if(!features.length){
+    digitMessage('No crowns drawn yet. Draw at least one polygon.');
+    geojsonLink.setValue('');geojsonLink.setUrl('');
+    return;
+  }
+  var result={type:'FeatureCollection',features:features};
+  var geojson=JSON.stringify(result,null,2);
+  geojsonPreview.setValue(geojson);
+  geojsonPreview.style().set('shown',true);
+  // Browsers may download this octet-stream data URI, open it, or block
+  // navigation depending on their security policy. Never call this guaranteed.
+  geojsonLink.setValue('Try instant local GeoJSON download ('+features.length+' crowns)');
+  geojsonLink.setUrl('data:application/octet-stream;charset=utf-8,'+
+                     encodeURIComponent(geojson));
+  digitMessage('INSTANT: '+features.length+' crown polygons serialized locally. '+
+    'Try the download link. If your browser opens or blocks it, select the '+
+    'GeoJSON text below, COPY, and save as Musanga_crowns.geojson. '+
+    'No server request was made. Full drawn boundaries are preserved; '+
+    'clip crowns to circle boundaries later in Colab.');
+}
+function exportServerDigitization(){
+  tools.stop();
+  var features=[];
   CIRCLE_IDS.forEach(function(cid){
-    var geometries=annotationLayers[cid].geometries();
+    var layer=annotationLayers[cid].geometries();
     var circle=ee.Geometry(circleGeometries[cid]);
-    for(var i=0;i<geometries.length();i++){
-      total++;
-      var crown=ee.Geometry(geometries.get(i));
-      var clipped=crown.intersection(circle,ee.ErrorMargin(0.1));
-      var area=clipped.area(ee.ErrorMargin(0.1));
-      features.push(ee.Feature(clipped,{
+    for(var i=0;i<layer.length();i++){
+      var geom=ee.Geometry(layer.get(i)).intersection(circle,ee.ErrorMargin(0.1));
+      features.push(ee.Feature(geom,{
         crown_id:'C'+cid+'_M'+('00000'+(i+1)).slice(-5),
-        circle_id:cid,
-        class_name:'Musanga',
-        annotation_method:'manual_exhaustive',
+        circle_id:cid,class_name:'Musanga',
         reviewer:reviewer.getValue()||'',
-        area_m2:area,
+        annotation_method:'manual_exhaustive',
         annotation_status:'draft'
       }));
     }
   });
-  if (!total) {
-    digitMessage('No crowns have been drawn yet. Draw at least one polygon before exporting.');
-    geojsonLink.setValue('');geojsonLink.setUrl('');
-    return;
-  }
-  geojsonLink.setValue('Preparing GeoJSON link ...');
-  geojsonLink.setUrl('');
-  digitMessage('Preparing '+total+' polygons in one request (no per-crown downloads).');
-  // Remove zero-area intersections inside the Earth Engine request, not with
-  // per-crown blocking getInfo() calls.
-  var fc=ee.FeatureCollection(features).filter(ee.Filter.gt('area_m2',0));
-  fc.getDownloadURL({
-    format:'geojson',
-    filename:'Musanga_exhaustive_crown_annotations'
-  },function(downloadUrl,error){
-    if(error || !downloadUrl){
-      geojsonLink.setValue('');
-      geojsonLink.setUrl('');
-      digitMessage('GeoJSON export failed: '+String(error||'No download URL returned')+
-        '. Your drawn crowns remain in this browser session.');
+  if(!features.length){digitMessage('No crowns drawn.');return;}
+  digitMessage('Requesting server-generated download URL. This can be slow.');
+  var fc=ee.FeatureCollection(features);
+  fc.getDownloadURL({format:'geojson',
+    filename:'Musanga_exhaustive_crown_annotations'},function(url,error){
+    if(error || !url){
+      digitMessage('Server export failed: '+String(error||'No URL')+
+        '. Use instant local GeoJSON text above instead.');
       return;
     }
-    geojsonLink.setValue('Download crown annotations (.geojson file)');
-    geojsonLink.setUrl(downloadUrl);
-    digitMessage('GeoJSON file ready; click the download link. '+
-      'Polygons are clipped to their assigned circle and zero-area intersections excluded.');
+    geojsonLink.setValue('Download server-clipped .geojson');
+    geojsonLink.setUrl(url);
+    digitMessage('Server-generated download URL is ready.');
   });
 }
 
-digitizePanel.add(btn('Prepare GeoJSON download',exportDigitization));
+digitizePanel.add(btn('Prepare instant local GeoJSON',exportDigitization));
+digitizePanel.add(btn('Alternative: EE server download (may be slow)',exportServerDigitization));
+digitizePanel.add(ui.Label('Backup: select and copy the GeoJSON text below. Save it as Musanga_crowns.geojson on your computer.',{color:'#555',fontSize:'11px'}));
+digitizePanel.add(geojsonPreview);
 digitizePanel.add(geojsonLink);
 digitizePanel.add(digitStatus);
 digitizePanel.add(ui.Label(
