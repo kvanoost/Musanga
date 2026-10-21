@@ -1,4 +1,4 @@
-// MUSANGA — six-circle verification v10.
+// MUSANGA — verification + exhaustive circle digitizing (pilot).
 // 60 unique polygons (source NB06: 68 features, 8 duplicate aliases removed).
 // Lazy-load each circle's RGB once; cache feature outlines; bright yellow transparent polygon.
 // Export classifications of 60 unique polygons; original mapping stays in NB06 CSV.
@@ -124,6 +124,9 @@ var map=ui.Map();
 map.setOptions('SATELLITE');
 map.setLocked(false,0,24);
 var side=ui.Panel({style:{width:'510px',padding:'10px'}});
+var verifyPanel=ui.Panel({style:{stretch:'horizontal'}});
+var digitizePanel=ui.Panel({style:{stretch:'horizontal',shown:false}});
+var appMode='verify';
 var progress=ui.Label('',{fontWeight:'bold'});
 var idLabel=ui.Label('',{fontWeight:'bold',fontSize:'16px'});
 var coordLabel=ui.Label('',{fontSize:'11px'});
@@ -135,10 +138,24 @@ var jump=ui.Select({
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v12 · circle 13 first)',{fontSize:'19px',fontWeight:'bold'}));
-side.add(ui.Label('Bright yellow outline = active polygon (fully transparent fill). Images are kept loaded within each circle.'));
-side.add(progress);side.add(idLabel);side.add(coordLabel);
-side.add(jump);
+side.add(ui.Label('Musanga Explorer — crowns & circle annotation',
+  {fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Choose an objective. Verification answers and drawn crowns are session-local.'));
+var objective=ui.Select({
+  items:[
+    {label:'1 — Verify existing crowns (60)',value:'verify'},
+    {label:'2 — Exhaustively delineate Musanga in a circle',value:'digitize'}
+  ],
+  value:'verify',
+  onChange:function(value){setObjective(value);},
+  style:{stretch:'horizontal'}
+});
+side.add(objective);
+side.add(verifyPanel);
+side.add(digitizePanel);
+verifyPanel.add(ui.Label('Bright yellow outline = active verification polygon (transparent fill).'));
+verifyPanel.add(progress);verifyPanel.add(idLabel);verifyPanel.add(coordLabel);
+verifyPanel.add(jump);
 
 // The high-resolution close-up is always on, and automatically updates.
 // It uses original RGB pixel values from the uploaded clipped orthomosaic.
@@ -205,10 +222,10 @@ function showCloseup() {
     {color:'gray',fontSize:'11px'}));
   closeupCache[key]=panel;
 }
-side.add(ui.Label('Magnified crown (automatic)',
+verifyPanel.add(ui.Label('Magnified crown (automatic)',
   {fontWeight:'bold',fontSize:'14px'}));
-side.add(inspectMode);
-side.add(inspector);
+verifyPanel.add(inspectMode);
+verifyPanel.add(inspector);
 
 function show(n) {
   if(n<0 || n>=rows.length) {
@@ -254,11 +271,11 @@ function btn(name,fn) {
 var nav=ui.Panel({layout:ui.Panel.Layout.flow('horizontal')});
 nav.add(btn('◀ Previous',function(){show(index-1);}));
 nav.add(btn('Next ▶',function(){show(index+1);}));
-side.add(nav);
-side.add(btn('Musanga',function(){record('musanga');}));
-side.add(btn('Non-Musanga',function(){record('non_musanga');}));
-side.add(btn('Uncertain',function(){record('uncertain');}));
-side.add(btn('Clear current answer',function(){delete answers[rows[index].id];show(index);}));
+verifyPanel.add(nav);
+verifyPanel.add(btn('Musanga',function(){record('musanga');}));
+verifyPanel.add(btn('Non-Musanga',function(){record('non_musanga');}));
+verifyPanel.add(btn('Uncertain',function(){record('uncertain');}));
+verifyPanel.add(btn('Clear current answer',function(){delete answers[rows[index].id];show(index);}));
 
 function csvEscape(value) {return '"'+String(value).replace(/"/g,'""')+'"';}
 function makeCSV() {
@@ -277,10 +294,191 @@ function makeCSV() {
   csvLink.setUrl('data:text/csv;charset=utf-8,'+encodeURIComponent(csv));
   status.setValue('60 unique IDs in CSV; the separate NB06 mapping preserves all 68 source IDs.');
 }
-side.add(btn('Prepare CSV download',makeCSV));
-side.add(csvLink);side.add(status);side.add(csvPreview);
-side.add(ui.Label('Answers remain only in this browser session. Export before exiting.',
+verifyPanel.add(btn('Prepare CSV download',makeCSV));
+verifyPanel.add(csvLink);verifyPanel.add(status);verifyPanel.add(csvPreview);
+verifyPanel.add(ui.Label('Answers remain only in this browser session. Export before exiting.',
   {color:'#a22'}));
+
+////////////////////////////////////////////////////////////////
+// OBJECTIVE 2 — EXHAUSTIVE MUSANGA CROWN DIGITIZATION
+////////////////////////////////////////////////////////////////
+// Earth Engine App drawing layers are session-local. GeoJSON download is
+// intentionally explicit; nothing is written to the user's Drive or EE Assets.
+var circleInfo=ee.FeatureCollection(CIRCLE_ASSET).getInfo();
+var circleGeometries={};
+var circleCenters={};
+function centreFromGeoJSON(geom) {
+  var xs=[],ys=[];
+  function scan(v) {
+    if (!Array.isArray(v) || !v.length)return;
+    if(typeof v[0]==='number'){xs.push(v[0]);ys.push(v[1]);}
+    else v.forEach(scan);
+  }
+  scan(geom.coordinates);
+  if(!xs.length)throw Error('Empty circle geometry');
+  return [(Math.min.apply(null,xs)+Math.max.apply(null,xs))/2,
+          (Math.min.apply(null,ys)+Math.max.apply(null,ys))/2];
+}
+circleInfo.features.forEach(function(f) {
+  var id=Number(f.properties.circle_id);
+  if(CIRCLE_IDS.indexOf(id)<0)return;
+  circleGeometries[id]=f.geometry;
+  circleCenters[id]=centreFromGeoJSON(f.geometry);
+});
+CIRCLE_IDS.forEach(function(cid){
+  if(!circleGeometries[cid])throw Error('Missing GEE circle geometry '+cid);
+});
+
+var tools=map.drawingTools();
+tools.setLinked(false);
+tools.setDrawModes(['polygon']);
+tools.setShown(false);
+var annotationLayers={};
+CIRCLE_IDS.forEach(function(cid){
+  annotationLayers[cid]=tools.addLayer([],
+    'Musanga crowns — circle '+cid,'#00FF00',false,false);
+});
+var activeDigitCircle=13;
+var digitStatus=ui.Label('',{whiteSpace:'pre-wrap'});
+var digitCounts=ui.Label('',{fontWeight:'bold'});
+var geojsonLink=ui.Label('',{color:'blue'});
+var geojsonPreview=ui.Label('',{fontSize:'10px',whiteSpace:'pre-wrap',shown:false});
+var reviewer=ui.Textbox({placeholder:'Reviewer name / code (optional)',
+  style:{stretch:'horizontal'}});
+var circlePicker=ui.Select({
+  items:CIRCLE_IDS.map(function(cid){return {label:'Circle '+cid,value:String(cid)};}),
+  value:'13',
+  onChange:function(value){activateDigitCircle(Number(value));},
+  style:{stretch:'horizontal'}
+});
+digitizePanel.add(ui.Label('Objective 2 — exhaustive annotation of one entire circle',
+  {fontWeight:'bold',fontSize:'15px'}));
+digitizePanel.add(ui.Label(
+  'Draw every visible Musanga crown in the selected circle. Green polygons are YOUR new annotations; cyan shows the circle boundary. Use the map drawing toolbar to edit vertices or erase polygons.'));
+digitizePanel.add(circlePicker);
+digitizePanel.add(reviewer);
+digitizePanel.add(digitCounts);
+function annotationCount(cid) {
+  return annotationLayers[cid].geometries().length();
+}
+function refreshDigitCounts() {
+  var total=0;
+  CIRCLE_IDS.forEach(function(cid){total+=annotationCount(cid);});
+  digitCounts.setValue('Circle '+activeDigitCircle+': '+annotationCount(activeDigitCircle)+
+    ' drawn crowns | total: '+total+' across 6 circles');
+}
+function digitMessage(message){digitStatus.setValue(message);}
+function activateDigitCircle(cid){
+  if (!annotationLayers[cid])throw Error('Unsupported annotation circle: '+cid);
+  tools.stop();
+  activeDigitCircle=cid;
+  CIRCLE_IDS.forEach(function(id){annotationLayers[id].setShown(id===cid);});
+  tools.setSelected(annotationLayers[cid]);
+  var layers=getCircleLayers(cid);
+  map.layers().reset([layers[0],layers[1]]);
+  currentCircle=null; // restore the active verification outline on returning
+  map.setCenter(circleCenters[cid][0],circleCenters[cid][1],20);
+  if(appMode==='digitize')tools.setShown(true);
+  refreshDigitCounts();
+  digitMessage('Circle '+cid+' ready. Zoom in, then press Draw new crown. '+
+    'Draw all Musanga crowns, including those crossing the cyan boundary. '+
+    'Their geometries will be clipped to the circle when exported.');
+  geojsonLink.setValue('');
+  geojsonLink.setUrl('');
+}
+tools.onDraw(function(){refreshDigitCounts();geojsonLink.setValue('');});
+tools.onEdit(function(){refreshDigitCounts();geojsonLink.setValue('');});
+tools.onErase(function(){refreshDigitCounts();geojsonLink.setValue('');});
+digitizePanel.add(btn('Draw new Musanga crown',function(){
+  tools.setSelected(annotationLayers[activeDigitCircle]);
+  tools.setShape('polygon');
+  tools.draw();
+  digitMessage('Click around the crown in the UAV map. Double-click to finish.');
+}));
+digitizePanel.add(btn('Stop drawing / edit existing crowns',function(){
+  tools.stop();
+  digitMessage('Select an existing green polygon in the map toolbar to edit or erase it.');
+}));
+digitizePanel.add(btn('Undo most recently drawn polygon in this circle',function(){
+  tools.stop();
+  var list=annotationLayers[activeDigitCircle].geometries();
+  if(list.length()){
+    list.remove(list.length()-1);
+    refreshDigitCounts();
+    geojsonLink.setValue('');
+    digitMessage('Last polygon removed. Export again after edits.');
+  } else digitMessage('There are no polygons in this circle.');
+}));
+digitizePanel.add(ui.Label('Export polygons as GeoJSON',
+  {fontWeight:'bold',fontSize:'14px'}));
+digitizePanel.add(ui.Label(
+  'Exports all six circle layers as one GeoJSON FeatureCollection. Only the portion within each circle is saved. Export before closing or refreshing this browser tab.'));
+function exportDigitization(){
+  tools.stop();
+  var features=[],skipped=[],indexByCircle={};
+  CIRCLE_IDS.forEach(function(cid){
+    indexByCircle[cid]=0;
+    var geometries=annotationLayers[cid].geometries();
+    for(var i=0;i<geometries.length();i++){
+      try{
+        // Clip each hand-drawn crown exactly at the assigned circle boundary.
+        var clipped=ee.Geometry(geometries.get(i)).intersection(
+          ee.Geometry(circleGeometries[cid]),ee.ErrorMargin(0.1));
+        var area=clipped.area(0.1).getInfo();
+        if(!area || area<=0){skipped.push('circle '+cid+' polygon '+(i+1));continue;}
+        var geo=clipped.getInfo();
+        indexByCircle[cid]++;
+        features.push({type:'Feature',properties:{
+          crown_id:'C'+cid+'_M'+('00000'+indexByCircle[cid]).slice(-5),
+          circle_id:cid,class_name:'Musanga',annotation_method:'manual_exhaustive',
+          reviewer:reviewer.getValue()||'',
+          area_m2:Number(area.toFixed(2)),
+          annotation_status:'draft'
+        },geometry:geo});
+      }catch(err) {
+        skipped.push('circle '+cid+' polygon '+(i+1)+': '+String(err));
+      }
+    }
+  });
+  if(skipped.length){
+    digitMessage('EXPORT NOT READY: '+skipped.length+
+      ' polygon(s) failed or fell outside their circle. Check: '+skipped.join('; '));
+    geojsonLink.setValue('');return;
+  }
+  var doc={type:'FeatureCollection',name:'Musanga_exhaustive_circle_annotations',
+           features:features};
+  var serialized=JSON.stringify(doc);
+  var url='data:application/geo+json;charset=utf-8,'+encodeURIComponent(serialized);
+  geojsonLink.setValue('Download '+features.length+' drawn crown(s) — GeoJSON');
+  geojsonLink.setUrl(url);
+  digitMessage('Export ready: '+features.length+' polygons. '+
+    'Download the GeoJSON NOW; annotations are not saved automatically. '+
+    'If there are zero polygons, the file records an empty annotation set.');
+}
+digitizePanel.add(btn('Prepare GeoJSON download',exportDigitization));
+digitizePanel.add(geojsonLink);
+digitizePanel.add(digitStatus);
+digitizePanel.add(ui.Label(
+  'Pilot: no persistent storage or collaboration sync. Draw/edit in the main map; '+
+  'the magnified thumbnail belongs to Objective 1 only.',
+  {color:'#a22'}));
+
+function setObjective(mode){
+  appMode=mode;
+  tools.stop();
+  verifyPanel.style().set('shown',mode==='verify');
+  digitizePanel.style().set('shown',mode==='digitize');
+  if(mode==='digitize'){
+    activateDigitCircle(activeDigitCircle);
+    tools.setShown(true);
+  }else{
+    tools.setShown(false);
+    CIRCLE_IDS.forEach(function(cid){annotationLayers[cid].setShown(false);});
+    currentCircle=null;
+    show(index);
+  }
+}
+
 ui.root.clear();
 ui.root.add(ui.SplitPanel({firstPanel:side,secondPanel:map,orientation:'horizontal',wipe:false}));
 // Start with Yoko circle 13, preserving sorted order within that circle.
