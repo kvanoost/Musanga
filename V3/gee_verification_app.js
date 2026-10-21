@@ -415,51 +415,39 @@ digitizePanel.add(ui.Label(
   'Exports all six circle layers as one GeoJSON FeatureCollection. Only the portion within each circle is saved. Export before closing or refreshing this browser tab.'));
 function exportDigitization(){
   tools.stop();
-  var features=[],skipped=[],indexByCircle={};
+  // Build one lazy FeatureCollection. Do NOT call getInfo() for each crown:
+  // that previously required two blocking server round-trips per polygon.
+  var features=[],total=0;
   CIRCLE_IDS.forEach(function(cid){
-    indexByCircle[cid]=0;
     var geometries=annotationLayers[cid].geometries();
+    var circle=ee.Geometry(circleGeometries[cid]);
     for(var i=0;i<geometries.length();i++){
-      try{
-        // Clip each hand-drawn crown exactly at the assigned circle boundary.
-        var clipped=ee.Geometry(geometries.get(i)).intersection(
-          ee.Geometry(circleGeometries[cid]),ee.ErrorMargin(0.1));
-        var area=clipped.area(0.1).getInfo();
-        if(!area || area<=0){skipped.push('circle '+cid+' polygon '+(i+1));continue;}
-        var geo=clipped.getInfo();
-        indexByCircle[cid]++;
-        features.push({type:'Feature',properties:{
-          crown_id:'C'+cid+'_M'+('00000'+indexByCircle[cid]).slice(-5),
-          circle_id:cid,class_name:'Musanga',annotation_method:'manual_exhaustive',
-          reviewer:reviewer.getValue()||'',
-          area_m2:Number(area.toFixed(2)),
-          annotation_status:'draft'
-        },geometry:geo});
-      }catch(err) {
-        skipped.push('circle '+cid+' polygon '+(i+1)+': '+String(err));
-      }
+      total++;
+      var crown=ee.Geometry(geometries.get(i));
+      var clipped=crown.intersection(circle,ee.ErrorMargin(0.1));
+      var area=clipped.area(ee.ErrorMargin(0.1));
+      features.push(ee.Feature(clipped,{
+        crown_id:'C'+cid+'_M'+('00000'+(i+1)).slice(-5),
+        circle_id:cid,
+        class_name:'Musanga',
+        annotation_method:'manual_exhaustive',
+        reviewer:reviewer.getValue()||'',
+        area_m2:area,
+        annotation_status:'draft'
+      }));
     }
   });
-  if(skipped.length){
-    digitMessage('EXPORT NOT READY: '+skipped.length+
-      ' polygon(s) failed or fell outside their circle. Check: '+skipped.join('; '));
-    geojsonLink.setValue('');return;
-  }
-  // Use Earth Engine's actual file-download endpoint, not a data: URI.
-  // A data: URI frequently opens GeoJSON directly in the browser instead.
-  if (!features.length) {
+  if (!total) {
     digitMessage('No crowns have been drawn yet. Draw at least one polygon before exporting.');
-    geojsonLink.setValue('');
-    geojsonLink.setUrl('');
+    geojsonLink.setValue('');geojsonLink.setUrl('');
     return;
   }
-  var fc=ee.FeatureCollection(features.map(function(f){
-    return ee.Feature(ee.Geometry(f.geometry), f.properties);
-  }));
-  geojsonLink.setValue('Preparing GeoJSON file download ...');
+  geojsonLink.setValue('Preparing GeoJSON link ...');
   geojsonLink.setUrl('');
-  digitMessage('Creating an actual .geojson download link for '+features.length+
-    ' crown polygons. Please wait.');
+  digitMessage('Preparing '+total+' polygons in one request (no per-crown downloads).');
+  // Remove zero-area intersections inside the Earth Engine request, not with
+  // per-crown blocking getInfo() calls.
+  var fc=ee.FeatureCollection(features).filter(ee.Filter.gt('area_m2',0));
   fc.getDownloadURL({
     format:'geojson',
     filename:'Musanga_exhaustive_crown_annotations'
@@ -471,13 +459,13 @@ function exportDigitization(){
         '. Your drawn crowns remain in this browser session.');
       return;
     }
-    geojsonLink.setValue('Download '+features.length+' crowns (.geojson file)');
+    geojsonLink.setValue('Download crown annotations (.geojson file)');
     geojsonLink.setUrl(downloadUrl);
-    digitMessage('File ready. Click the blue download link; your browser will '+
-      'download Musanga_exhaustive_crown_annotations.geojson. '+
-      'Drawings remain session-local until exported.');
+    digitMessage('GeoJSON file ready; click the download link. '+
+      'Polygons are clipped to their assigned circle and zero-area intersections excluded.');
   });
 }
+
 digitizePanel.add(btn('Prepare GeoJSON download',exportDigitization));
 digitizePanel.add(geojsonLink);
 digitizePanel.add(digitStatus);
