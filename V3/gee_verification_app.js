@@ -342,7 +342,7 @@ var activeDigitCircle=13;
 var digitStatus=ui.Label('',{whiteSpace:'pre-wrap'});
 var digitCounts=ui.Label('',{fontWeight:'bold'});
 var geojsonLink=ui.Label('',{color:'blue'});
-var geojsonPreview=ui.Label('',{fontSize:'10px',whiteSpace:'pre-wrap',shown:false});
+var geojsonPreview=ui.Textarea({value:'',placeholder:'GeoJSON text appears here after export',style:{stretch:'horizontal',height:'180px',fontSize:'11px',shown:false}});
 var reviewer=ui.Textbox({placeholder:'Reviewer name / code (optional)',
   style:{stretch:'horizontal'}});
 var circlePicker=ui.Select({
