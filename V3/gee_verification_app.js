@@ -135,7 +135,7 @@ var jump=ui.Select({
   onChange:function(value) {if(value!==null) show(Number(value));},
   style:{stretch:'horizontal'}
 });
-side.add(ui.Label('Musanga — verification (v11 · automatic close-up)',{fontSize:'19px',fontWeight:'bold'}));
+side.add(ui.Label('Musanga — verification (v12 · circle 13 first)',{fontSize:'19px',fontWeight:'bold'}));
 side.add(ui.Label('Bright yellow outline = active polygon (fully transparent fill). Images are kept loaded within each circle.'));
 side.add(progress);side.add(idLabel);side.add(coordLabel);
 side.add(jump);
@@ -230,7 +230,7 @@ function show(n) {
     // Replace ONLY the red selected polygon layer.
     map.layers().set(2,selectedLayer);
   }
-  map.setCenter(r.center[0],r.center[1],22);
+  map.setCenter(r.center[0],r.center[1],24);
   idLabel.setValue(r.id+'   (circle '+r.cid+')');
   coordLabel.setValue('Longitude '+r.center[0].toFixed(7)+
     ' | Latitude '+r.center[1].toFixed(7));
@@ -283,4 +283,7 @@ side.add(ui.Label('Answers remain only in this browser session. Export before ex
   {color:'#a22'}));
 ui.root.clear();
 ui.root.add(ui.SplitPanel({firstPanel:side,secondPanel:map,orientation:'horizontal',wipe:false}));
-show(0);
+// Start with Yoko circle 13, preserving sorted order within that circle.
+var firstCircle13=rows.findIndex(function(r){return r.cid===13;});
+if(firstCircle13<0)throw Error('No review polygons for circle 13');
+show(firstCircle13);
