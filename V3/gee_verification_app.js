@@ -1,8 +1,8 @@
 // MUSANGA — verification + exhaustive circle digitizing (pilot).
-// 60 unique polygons (source NB06: 68 features, 8 duplicate aliases removed).
-// Start at first sorted ID and flag every incomplete CSV download.
+// Source inventory: 60 IDs, of which 55 have valid displayable geometries.
+// Start at the first valid crown in circle 8; verify each of the 55 displayable crowns.
 // Lazy-load each circle's RGB once; cache feature outlines; bright yellow transparent polygon.
-// Export classifications of 60 unique polygons; original mapping stays in NB06 CSV.
+// Export only the 55 valid crowns, with explicit progress/completeness status.
 
 var ROOT = 'projects/musanga-511110/assets/Verification/';
 var POLYGON_ASSET = ROOT + 'verification_unique';
@@ -113,10 +113,11 @@ Object.keys(EXPECTED).forEach(function(k) {
     ' expected '+EXPECTED[k]+' polygons; received '+counts[k]);
 });
 var rows=allRows.filter(function(r){return !!r.geometry;});
-print('Musanga v10: 60 unique features in 6 circles');
+if(rows.length!==55)throw Error('Expected 55 valid review crowns; found '+rows.length+'. Inspect source geometry.');
+print('Musanga Explorer: 55 valid crowns for review in 6 circles (60 source IDs).');
 print('Per-circle feature counts:',counts);
 print('Missing geometries (excluded from review, flagged in export):',missingGeometryIds);
-if (rows.length!==60) print('WARNING: only '+rows.length+' of 60 geometries displayable.');
+print('Review set: '+rows.length+' valid crowns; '+missingGeometryIds.length+' source polygons without displayable geometry excluded.');
 
 var answers={},index=0,currentCircle=null;
 function isReviewed(id) {
@@ -124,11 +125,10 @@ function isReviewed(id) {
     ['musanga','non_musanga','uncertain'].indexOf(answers[id])>=0;
 }
 function reviewSummary() {
-  var missing=allRows.filter(function(r){return !r.geometry || !isReviewed(r.id);})
+  var missing=rows.filter(function(r){return !isReviewed(r.id);})
     .map(function(r){return r.id;});
-  return {total:allRows.length,reviewed:allRows.length-missing.length,
-          missing:missing,complete:missing.length===0 &&
-          allRows.length===60};
+  return {total:rows.length,reviewed:rows.length-missing.length,
+          missing:missing,complete:missing.length===0};
 }
 function invalidatePreparedCSV(){
   csvLink.setValue('');
@@ -192,7 +192,7 @@ side.add(ui.Label('Musanga Explorer — crowns & circle annotation',
 side.add(ui.Label('Choose an objective. Verification answers and drawn crowns are session-local.'));
 var objective=ui.Select({
   items:[
-    {label:'1 — Verify existing crowns (60)',value:'verify'},
+    {label:'1 — Verify existing crowns (55)',value:'verify'},
     {label:'2 — Exhaustively delineate Musanga in a circle',value:'digitize'}
   ],
   value:'verify',
@@ -334,13 +334,13 @@ verifyPanel.add(btn('Clear current answer',function(){delete answers[rows[index]
 
 function csvEscape(value) {return '"'+String(value).replace(/"/g,'""')+'"';}
 function makeCSV() {
-  // All source IDs are included. Row count is NOT the reviewed count.
+  // Export valid, reviewable crowns only (55); 5 geometry-less source IDs excluded.
   var summary=reviewSummary();
   var lines=['verify_id,circle_id,classification,reviewed,reviewed_count,total_crowns,annotation_complete'];
-  allRows.forEach(function(r) {
+  rows.forEach(function(r) {
     var reviewed=isReviewed(r.id);
     lines.push(csvEscape(r.id)+','+r.cid+','+
-      (r.geometry ? (answers[r.id]||'unreviewed') : 'missing_geometry')+','+
+      (answers[r.id]||'unreviewed')+','+
       (reviewed?'true':'false')+','+summary.reviewed+','+summary.total+','+
       (summary.complete?'true':'false'));
   });
@@ -353,7 +353,6 @@ function makeCSV() {
     var ids=summary.missing.slice(0,12).join(', ');
     var message='WARNING — INCOMPLETE VERIFICATION: '+summary.reviewed+'/'+summary.total+
       ' crowns reviewed; '+n+' remain unreviewed.'+
-      (missingGeometryIds.length?' Missing geometries: '+missingGeometryIds.join(', ')+'.':'')+
       '\nUnreviewed IDs: '+ids+(n>12?' (and '+(n-12)+' more)':'')+
       '\nThe CSV contains '+summary.total+' rows, but is NOT a complete classification.';
     status.setValue(message);
@@ -366,47 +365,6 @@ function makeCSV() {
     csvLink.setValue('Download COMPLETE CSV ('+summary.total+'/'+summary.total+')');
   }
 }
-// Restore classifications from a previously downloaded CSV without losing
-// hours of review. Single-line compact syntax avoids multiline Textbox issues:
-// C08_V00000=non_musanga;C08_V00001=musanga;...
-var restoreInput=ui.Textbox({
-  placeholder:'Paste ID=classification;ID=classification;...',
-  style:{stretch:'horizontal'}
-});
-verifyPanel.add(ui.Label('Restore earlier reviews (optional)',{
-  fontWeight:'bold'}));
-verifyPanel.add(ui.Label(
-  'Paste a single line of ID=musanga, ID=non_musanga or ID=uncertain pairs '+
-  'separated by semicolons. Existing classifications are retained unless '+
-  'explicitly replaced. Save the current CSV before changing this script.',
-  {fontSize:'11px'}));
-verifyPanel.add(restoreInput);
-verifyPanel.add(btn('Restore saved classifications',function(){
-  var raw=String(restoreInput.getValue()||'').trim();
-  if(!raw){status.setValue('Nothing pasted.');return;}
-  var items=raw.split(';');
-  var pending={},invalid=[];
-  items.forEach(function(item){
-    var bits=item.trim().split('=');
-    if(bits.length!==2){invalid.push(item);return;}
-    var id=bits[0].trim(),label=bits[1].trim();
-    if(!seen[id] || ['musanga','non_musanga','uncertain'].indexOf(label)<0 ||
-       pending[id])invalid.push(item);
-    else pending[id]=label;
-  });
-  if(invalid.length){
-    status.setValue('RESTORE ABORTED: invalid or duplicate entries: '+
-       invalid.slice(0,5).join('; '));
-    return;
-  }
-  Object.keys(pending).forEach(function(id){answers[id]=pending[id];});
-  invalidatePreparedCSV();
-  var summary=reviewSummary();
-  status.setValue('RESTORED '+Object.keys(pending).length+
-     ' classifications. Total reviewed '+summary.reviewed+'/'+summary.total+
-     '. Missing geometries cannot be reviewed until recovered.');
-  show(index);
-}));
 verifyPanel.add(btn('Prepare CSV download',makeCSV));
 verifyPanel.add(csvLink);verifyPanel.add(status);verifyPanel.add(csvPreview);
 verifyPanel.add(ui.Label('Answers remain only in this browser session. Export before exiting.',
@@ -622,7 +580,7 @@ function setObjective(mode){
 
 ui.root.clear();
 ui.root.add(ui.SplitPanel({firstPanel:side,secondPanel:map,orientation:'horizontal',wipe:false}));
-// Start with FIRST available sorted verification ID — no skipped circles.
+// Start with FIRST valid sorted verification ID — circle 8, then the remaining circles in order.
 if(!rows.length)throw Error('No displayable polygon geometries.');
 print('Verification starts at first ID:',rows[0].id,'circle',rows[0].cid);
 show(0);
