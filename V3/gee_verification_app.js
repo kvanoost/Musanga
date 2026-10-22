@@ -39,15 +39,44 @@ var allRows = data.features.map(function(feature) {
   var cid = Number(feature.properties.circle_id);
   var geom = feature.geometry;
   if (!geom || !geom.coordinates || !geom.coordinates.length) {
-    // Bulk Earth Engine collection metadata sometimes omits feature geometry.
-    // Attempt an independent retrieval by ID before marking unavailable.
-    try {
-      geom = ee.Feature(rawFC.filter(ee.Filter.eq(ID_FIELD,id)).first())
-        .geometry().getInfo();
-      if (!geom || !geom.coordinates || !geom.coordinates.length) geom = null;
-    } catch (ex) {
-      geom = null;
-      print('Geometry lookup failed for '+id+':', String(ex));
+    // First try the exact original feature's system:index; verify_id
+    // can be stored with a numeric type, so filtering with String(id)
+    // alone might fail even though the feature exists.
+    var attempts=[];
+    var uniqueSourceId=feature.id ||
+      (feature.properties && feature.properties['system:index']);
+    function tryGeometry(label, candidate) {
+      try {
+        var result=ee.Feature(candidate).geometry().getInfo();
+        if (result && result.coordinates && result.coordinates.length) {
+          geom=result;return true;
+        }
+        attempts.push(label+': returned empty geometry');
+      } catch(err) { attempts.push(label+': '+String(err)); }
+      return false;
+    }
+    var found=false;
+    if (uniqueSourceId !== null && uniqueSourceId !== undefined) {
+      found=tryGeometry('system:index',
+        rawFC.filter(ee.Filter.eq('system:index',uniqueSourceId)).first());
+    }
+    if (!found) {
+      found=tryGeometry('verify_id as stored property type',
+        rawFC.filter(ee.Filter.eq(ID_FIELD,feature.properties[ID_FIELD])).first());
+    }
+    if (!found) {
+      // Last attempt: retrieve by its position in the full source
+      // collection, independent of ID-filter types and indexes.
+      found=tryGeometry('collection source position',
+        rawFC.toList(data.features.length).get(
+          data.features.indexOf(feature)));
+    }
+    if(!found) {
+      geom=null;
+      print('UNRESOLVED SOURCE GEOMETRY for '+id+
+            ' (circle '+cid+'). Attempts:',attempts);
+    } else {
+      print('RECOVERED GEOMETRY for '+id+' using independent feature retrieval.');
     }
   }
   if (!geom) {
@@ -337,6 +366,47 @@ function makeCSV() {
     csvLink.setValue('Download COMPLETE CSV ('+summary.total+'/'+summary.total+')');
   }
 }
+// Restore classifications from a previously downloaded CSV without losing
+// hours of review. Single-line compact syntax avoids multiline Textbox issues:
+// C08_V00000=non_musanga;C08_V00001=musanga;...
+var restoreInput=ui.Textbox({
+  placeholder:'Paste ID=classification;ID=classification;...',
+  style:{stretch:'horizontal'}
+});
+verifyPanel.add(ui.Label('Restore earlier reviews (optional)',{
+  fontWeight:'bold'}));
+verifyPanel.add(ui.Label(
+  'Paste a single line of ID=musanga, ID=non_musanga or ID=uncertain pairs '+
+  'separated by semicolons. Existing classifications are retained unless '+
+  'explicitly replaced. Save the current CSV before changing this script.',
+  {fontSize:'11px'}));
+verifyPanel.add(restoreInput);
+verifyPanel.add(btn('Restore saved classifications',function(){
+  var raw=String(restoreInput.getValue()||'').trim();
+  if(!raw){status.setValue('Nothing pasted.');return;}
+  var items=raw.split(';');
+  var pending={},invalid=[];
+  items.forEach(function(item){
+    var bits=item.trim().split('=');
+    if(bits.length!==2){invalid.push(item);return;}
+    var id=bits[0].trim(),label=bits[1].trim();
+    if(!seen[id] || ['musanga','non_musanga','uncertain'].indexOf(label)<0 ||
+       pending[id])invalid.push(item);
+    else pending[id]=label;
+  });
+  if(invalid.length){
+    status.setValue('RESTORE ABORTED: invalid or duplicate entries: '+
+       invalid.slice(0,5).join('; '));
+    return;
+  }
+  Object.keys(pending).forEach(function(id){answers[id]=pending[id];});
+  invalidatePreparedCSV();
+  var summary=reviewSummary();
+  status.setValue('RESTORED '+Object.keys(pending).length+
+     ' classifications. Total reviewed '+summary.reviewed+'/'+summary.total+
+     '. Missing geometries cannot be reviewed until recovered.');
+  show(index);
+}));
 verifyPanel.add(btn('Prepare CSV download',makeCSV));
 verifyPanel.add(csvLink);verifyPanel.add(status);verifyPanel.add(csvPreview);
 verifyPanel.add(ui.Label('Answers remain only in this browser session. Export before exiting.',
