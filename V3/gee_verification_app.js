@@ -315,7 +315,7 @@ function makeCSV() {
       (reviewed?'true':'false')+','+summary.reviewed+','+summary.total+','+
       (summary.complete?'true':'false'));
   });
-  var csv=lines.join('\\n')+'\\n';
+  var csv=lines.join('\n')+'\n';
   csvPreview.setValue(csv);
   csvPreview.style().set('shown',true);
   csvLink.setUrl('data:text/csv;charset=utf-8,'+encodeURIComponent(csv));
@@ -325,8 +325,8 @@ function makeCSV() {
     var message='WARNING — INCOMPLETE VERIFICATION: '+summary.reviewed+'/'+summary.total+
       ' crowns reviewed; '+n+' remain unreviewed.'+
       (missingGeometryIds.length?' Missing geometries: '+missingGeometryIds.join(', ')+'.':'')+
-      '\\nUnreviewed IDs: '+ids+(n>12?' (and '+(n-12)+' more)':'')+
-      '\\nThe CSV contains '+summary.total+' rows, but is NOT a complete classification.';
+      '\nUnreviewed IDs: '+ids+(n>12?' (and '+(n-12)+' more)':'')+
+      '\nThe CSV contains '+summary.total+' rows, but is NOT a complete classification.';
     status.setValue(message);
     completenessWarning.setValue(message);
     csvLink.setValue('⚠ DOWNLOAD PARTIAL CSV — INCOMPLETE ('+
