@@ -51,12 +51,21 @@ The numbered notebook names identify historical development stages, not a guaran
 
 **Moving repository notebooks does not move the data in Google Drive.** Keep original output directories unchanged. Before any notebook is removed from the repository root, verify that no active workflow imports it by file path, check exact content SHA of the archived copy, and ensure the master or retained notebook contains the needed functionality.
 
-## Current cleanup status
+## Cleanup result — 2026-10-26
 
-- Historical `archive/` entries for old 02B and 03 were already present.
-- Exact archive copies of standalone `08B` and `09` have been created and verified by blob SHA; original top-level files still exist until the relocation is completed.
-- `13A2` and `13B` archival, the 04 Final provenance review and the Luki-07 duplicate review remain pending.
-- **No model outputs, checkpoints, or reference data should be deleted during repository cleanup.**
+**Completed on branch `v3` in commit `374f9b10`:** seven historical or companion notebooks were moved out of the `V3_1` root into `V3_1/archive/`, preserving the **exact original Git blob SHA** (identical contents):
+
+- `02D2_V2_Photometric_Augmentation_v3_1.ipynb` and `02F_Paired_V3_V3_1_Cross_Evaluation.ipynb` — historical UAV model comparisons
+- `04_Satellite_Musanga_Quick_Verification_v3_1.ipynb` — historical quick transfer pilot
+- `08B_GEDI_Vertical_Structure_v2.ipynb` — GEDI analysis already copied into the main 06 master
+- `09_Abundance_Weighted_LOFO_S2_EMB.ipynb` — experiment already copied into the main 06 master
+- `13A2_Planet_UAV_teacher_audit_v3_1.ipynb` and `13B_Dense_Planet_UAV_tiles_v3_1.ipynb` — independent Planet/UAV dense supervision experiments; archived, **not merged into NB06**
+
+**Verification:** 14 notebooks remain directly under `V3_1` (down from 21); 9 notebooks are in `archive/` (up from 2). The master `06_Musanga_Satellite_Clean_v3_1.ipynb` has the same blob SHA `55bcdf5ed8f4956f8ea5018fba9cd4ba368bc534` before and after the archive commit.
+
+**Retained intentionally:** `04_Satellite_Musanga_Final.ipynb` (large historical notebook, unique provenance not yet established); both Luki 07 notebooks (different execution/output evidence); both 04A stages, 04B, and `06_Planet_Embedding_Spatial_Features_v3_1.ipynb` (active upstream data dependencies). These have **not** been declared duplicates or deleted.
+
+Data files, model checkpoints, output directories and all previously created predictions were not changed. Because notebook paths may be referenced by external Colab links, archived companions should be opened at their new path.
 
 ## Working convention going forward
 
