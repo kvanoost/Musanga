@@ -24,7 +24,7 @@ Start with RGB (3), local canopy prominence, detrended canopy roughness, and con
 
 ## Site mapping
 
-* Baego — no LAS identified; DSM/RGB should exist.
+* Baego — four SfM LAS zones: Nadine_Baego_B2mlt, B3mlt, C2mlt and C3mlt (2023 Green densified point clouds); retain separate zones and check correspondence with RGB areas.
 * MOS — Mos 1–2, 3–4 and 5–6 SfM clouds.
 * Yangambi — Carlier2020 six parts, YBJoseph and YBForgeo.
 * Yoko — Yoko_survey_georef.las.
