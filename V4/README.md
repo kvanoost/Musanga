@@ -13,7 +13,7 @@ Keep V3_1's field-grounded KVO annotation semantics, 30 retained exhaustive circ
 | Notebook | V4 responsibility | Current status |
 | --- | --- | --- |
 | [NB00](00_UAV_Input_Data_Audit_v4.ipynb) | Inherit approved reference registry; RGB/DSM/LAS/MS inventories, separate MS acquisitions and coverage metadata | Updated; new MS Section 04B needs execution |
-| [NB01](01_Reference_Data_and_Spatial_Splits_v4.ipynb) | Preserve V3_1 masks/folds and QA DSM structural channels; add MS/Las window QA next | Created; DSM circle QA run by user |
+| [NB01](01_Reference_Data_and_Spatial_Splits_v4.ipynb) | Preserve V3_1 masks/folds and QA DSM structural channels; Sections 14–15 audit MS circle coverage, all four band validity, duplicate band and quicklook registration | Created; DSM and MS circle coverage QA run by user, four-band Section 15 ready |
 | NB02B | V3_1 M2 frozen spatial 3-fold validation, matched RGB vs RGB+DSM and modality ablations on common support | Planned |
 | NB03 | Full-mosaic inference for validated RGB+DSM checkpoint with V3_1 feather-blending and restart QA | Planned |
 | NB04+ | Satellite predictor and upscaling sequence corresponding to V3_1 | Later, preserve numbering |
