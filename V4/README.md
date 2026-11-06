@@ -54,3 +54,7 @@ Inventory `Final/Data/MS` in NB00 Section 04B. Acquisition groups:
 * Yoko: no MS.
 
 **Validation hierarchy:** (1) Preserve 30-circle RGB V3_1 benchmark; (2) paired 28-circle RGB vs RGB+DSM, subject to crown co-registration, with MOS circles 26/27 missing DSM; (3) MS and LAS ablations **only** on jointly valid, acquisition-compatible `ROI.shp ∩ RGB ∩ modality` support, keeping original circle IDs and fold assignments; (4) optional spatially held-out within-survey windows if 30 circles contain no overlapping MS. Do not claim comparable overall model performance when evaluation supports differ. LAS is image-based SfM, not penetrating lidar.
+
+## NBAA — Annotation consistency (exploration first)
+
+[Open NBAA exploratory notebook](NBAA_Annotation_Consistency_Exploration_v4.ipynb). Input: `Final/Data/Annotations/Verification` (five separate classification CSVs, four independent GeoJSON polygon exports with no extension, plus reference shapefile). Outputs: `Final/Outputs/v4/NBAA_annotation_consistency` only. The notebook audits joined `verify_id` labels, per-annotator polygon coverage, spatial union IoU and one-to-one crown matching. This is a read-only reconnaissance, not an annotator reliability/biological accuracy claim. Unannotated polygons are not automatically non-Musanga. Do not train new models until completeness, geometry and task differences are resolved.
