@@ -96,6 +96,24 @@ def fit_both(fold,mode,tr,va,mu,sd):
     del net,opt;gc.collect();torch.cuda.empty_cache()
 
 
+# Fast fold load: decompress each NPZ member once per file, rather than
+# re-decompressing a large RGB/DSM array for each individual chip.
+def read_joint_fold_fast(fold):
+    rows=[]
+    for rec in CACHES[CACHES.fold.eq(fold)].itertuples():
+        with np.load(rec.path,allow_pickle=False) as z:
+            assert str(z['fingerprint'].item())==rec.fingerprint
+            arrays={k:z[k] for k in ('rgb','dsm','ms','y','w','site','role')}
+        n=len(arrays['y'])
+        for j in range(n):
+            rows.append({k:arrays[k][j] for k in ('rgb','dsm','ms','y','w')}
+                        |{'site':str(arrays['site'][j]),
+                          'role':str(arrays['role'][j])})
+    tr=[q for q in rows if q['role']=='train']
+    va=[q for q in rows if q['role']=='val']
+    assert len(tr)>=30 and len(va)>=5,(fold,len(tr),len(va))
+    return tr,va
+
 # Only M3; do NOT execute the old training loop again.
 for fold in range(3):
     # Derive exact training normalization from the original saved DSM arm,
@@ -104,7 +122,7 @@ for fold in range(3):
                       map_location='cpu',weights_only=False)
     mu=np.asarray(dsm_ck['norm_mean'],np.float32)
     sd=np.asarray(dsm_ck['norm_std'],np.float32)
-    tr,va=read_joint_fold(fold)
+    tr,va=read_joint_fold_fast(fold)
     check_mu,check_sd=dsm_norm(tr)
     assert np.allclose(mu,check_mu) and np.allclose(sd,check_sd),(
         'Original DSM normalization differs from live training chips',fold)
