@@ -5,7 +5,7 @@ All ten V4 notebooks copied to `V5/`, all outputs and execution counts cleared, 
 
 | V5 notebook | Existing legacy dependency / migration requirement | Status |
 |---|---|---|
-| 00 Input audit | Reads `Final/Data` and approved V3.1 input-audit manifest; rewrite to establish native V5 immutable raw input registry, with no V3.1 manifest requirement | blocked |
+| 00 Input audit | Reads permanent `Final/Data` and expects a V5-native replacement for the old approved input-audit manifest; rewrite to establish native V5 immutable raw input registry, with no V3.1 manifest requirement | blocked |
 | 01 Reference/spatial folds | Reads `Outputs/v4/00_reference_expansion_v1`; rewire to NB00 V5 registry, validate cover and spatial splits | blocked |
 | 02 RGB circles/plots | Reads V3.1 annotated/reference metadata, V4 audit + spatial folds; reconstruct from V5 source labels and NB00/01 outputs | blocked |
 | 03 RGB U-Net | Reads V3.1 metadata and V4 annotation, fold and chip outputs; rebuild chips, train and validate from V5-only inputs | blocked |
@@ -18,7 +18,7 @@ All ten V4 notebooks copied to `V5/`, all outputs and execution counts cleared, 
 
 ## Raw source folders observed in Google Drive
 
-`Final/Data` currently contains `Field/`, `Patrick/`, `LAS/`, `MS/`, `Annotations/`, `Ortho_RGB/`, `DSM/`. These are the **source inventory**, not yet validated against individual notebook read paths, nor copied into `V5/Inputs`.
+`Final/Data` currently contains `Field/`, `Patrick/`, `LAS/`, `MS/`, `Annotations/`, `Ortho_RGB/`, `DSM/`. These are the **permanent source inventory**; read directly without copying.
 
 ## Additional handover specifications
 
@@ -33,8 +33,8 @@ All ten V4 notebooks copied to `V5/`, all outputs and execution counts cleared, 
 - GitHub branch `V5` created: **yes**
 - V5 notebook snapshots copied: **10 of 10**
 - Dedicated V5 Drive folders created: **yes**
-- Raw data copied and hashed: **no**
-- Old paths refactored: **no**
+- Raw data duplication: **not required**; source remains `Final/Data`.
+- Principal code paths refactored: **yes**; dependency generation and validation remain incomplete.
 - New native satellite inputs: **no**
 - Cold sequential Colab execution: **no**
 - Handover to another user: **no**
