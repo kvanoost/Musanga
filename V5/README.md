@@ -1,38 +1,50 @@
-# MUSANGA V5 — reproducible handover (MIGRATION IN PROGRESS)
+# MUSANGA V5 — reproducible handover
 
-**Status: NOT YET RUNNABLE.** This branch intentionally quarantines the copied notebooks with a first-cell safety stop. Do not remove that stop until the V5 dependency audit passes. **Do not delete previous Drive data.**
+**Status: code migration implemented; release acceptance pending native NB07/NB08 completion and independent clean-run audit. No historical data may be deleted yet.**
 
-## Single source of truth
+## Directory contract
 
-- GitHub branch: `V5`
-- Notebooks: `V5/00_*.ipynb` through `V5/08_*.ipynb`, including `05bis` (10 notebooks in all).
-- Colab Drive root: `/content/drive/MyDrive/Colab Notebooks/Musanga/Final/V5`
-- Google Drive folder: https://drive.google.com/drive/folders/1Ss8xMqp8Im95HBGDZMXpZJIEwEtXv96e
-- Permanent raw inputs: `Final/Data` (read-only). Derived outputs: `Final/V5/Outputs`; QA: `Final/V5/QA_and_Manifests`.
+- GitHub branch `V5`, notebooks in `V5/`. Use NB00–08 plus NB05bis in order (ten notebooks).
+- Permanent raw source data: `Musanga/Final/Data/` (read-only). Do not move, delete, or duplicate.
+- Generated V5 data: `Musanga/Final/V5/Outputs/`.
+- Release audit and manifest: `Musanga/Final/V5/QA_and_Manifests/`. Individual notebook manifests also reside alongside their outputs.
+- The abandoned `V5/Inputs/Ortho_RGB/` copy is not a V5 runtime dependency. Compare against permanent originals before removing any duplicate.
+- Default Colab mount: `/content/drive/MyDrive/Colab Notebooks/Musanga/Final/V5`; an alternate supported location is `/content/drive/MyDrive/Musanga/Final/V5`. A transfer to another root needs path configuration and explicit checks, not a hidden legacy fallback.
 
-Read original source data directly from `Final/Data`. All derived products must be generated under `Final/V5/Outputs`, without reading legacy output directories. Satellite extraction must be regenerated and documented under V5. No raw-data duplication is required.
+[Drive V5](https://drive.google.com/drive/folders/1Ss8xMqp8Im95HBGDZMXpZJIEwEtXv96e).
 
-## Scientific integrity and migration policy
+## Execution order
 
-The notebook copies are **frozen reference snapshots**, not refactored V5 implementations yet. All historical scientific analyses and methods have been carried forward intact, with saved outputs removed and an explicit blocking cell added. V5 must retain decisions and traceable performance benchmarks while replacing its historical dependencies. In particular, **NB08 currently reads V3.1 `frozen_50m_reference.parquet`**; that cannot be treated as a legitimate V5-native intermediate. Either regenerate the table from frozen V5-native inputs through NB00–NB07 (including S2 / embeddings acquisition), or explicitly promote it to an immutable, checksum-verified source data product with complete reproducible provenance and a documented scientific limitation. The latter is not a clean end-to-end regeneration and does not satisfy the requested sequential workflow unless explicitly approved.
+| Notebook | Runtime | Output |
+|---|---|---|
+| 00 input audit | CPU | native raw registry, field/circle reference |
+| 01 spatial cover balance | CPU | 108 reference identities and frozen 3-fold blocks |
+| 02 annotation preparation | CPU | audited labels and mosaic ownership |
+| 03 unified RGB U-Net | GPU | three fold-specific checkpoints |
+| 04 independent RGB evaluation | GPU | 106 held-out footprints |
+| 05 matched sensor comparison | GPU | frozen RGB, matched RGB control, RGB+DSM, RGB+MS, combined |
+| 05bis acquisition quality | CPU | optional explanatory proxy analysis |
+| 06 scientific report | CPU | Word report, tables, figure atlas |
+| 07 RGB-only production | GPU | new full-data model and six native-resolution two-band mosaics |
+| 08 satellite detectability | CPU | native grids, fresh EE predictors, LOFO, block CV, scale/abundance experiments, optional structure tests and fitted 50m model |
 
-## Reproducible release acceptance gates
+Open the numbered notebooks using `https://colab.research.google.com/github/kvanoost/Musanga/blob/V5/V5/<filename>`. The historical NB07 filename still contains MS; its V5 content is RGB only. NB05bis lightweight revision has not yet been execution-tested; the earlier V5 version completed. NB00_Prepare_Immutable_Inputs is retired and should not be run.
 
-1. Inventory fixed raw source inputs in `Final/Data` using relative paths, sizes, provenance and available checksums. Do not duplicate original data.
-2. All V5 notebooks import the same `V5/config.py` or equivalent shared configuration; no hardcoded paths to `Outputs/V3_1`, `Outputs/v4`, `ROOTS`-based legacy discovery, historical cached tables or absolute source paths.
-3. Outputs are deterministic, version-stamped, and written under `V5/Outputs/NN_...` only. Each notebook emits a machine-readable output manifest (relative path, SHA-256, upstream manifests and parameters), scientific QA table and `SUCCESS` marker **only after passing assertions**.
-4. Notebook NB00–NB08, plus 05bis when part of the scientific workflow, execute in the prescribed order from a new Colab runtime / clean V5 Outputs folder, retaining Final/Data. No fallback reads from legacy directories or internet data outside recorded input acquisition.
-5. Frozen test results: expected sample counts/site distributions, ROI sizes, data CRS/resolution, model fingerprints, image and mosaic footprint, V4-era performance benchmark comparisons, bias and high-cover support. Document scientifically justified deviations.
-6. Run a second clean sequential execution on a second Colab account or by a colleague granted access to both GitHub and the Drive input dataset; record runtime versions, GPU, Python wheels, Google Earth Engine project credentials and required permissions.
-7. Only after two complete successful runs, independently verify all V5 outputs and their checksums, storage capacity and recoverability. Prepare an old-data inventory and a reversible archival plan. **No old data has been deleted.**
+## NB08 native sources and choices
 
-## Immediate migration blockers
+NB08 reads the complete NB07 production manifest. It uses the six probability/binary mosaics and regenerates its UTM35N target grids at 10, 25, 30, 50, 75, 100m. A fixed 1m nearest-neighbour lattice approximates area fractions; a sample of native-pixel overlap computations audits the approximation. A cell must have ≥90% sampled UAV support. Across overlapping mosaics, the highest-support source wins; ties are deterministic. No legacy reference grid or generated predictor cache is read.
 
-See `V5/DEPENDENCY_AUDIT.md`. Source `Final/Data` has seven folders (Ortho_RGB, MS, DSM, Annotations, Field, LAS, Patrick) and remains in place. Executable path literals have been redirected to V5 outputs and the permanent source folder. Native manifest and circle reference generation, NB04 upstream evaluation and NB08 satellite extraction remain unresolved; notebooks remain guarded.
+Satellite acquisition-year dates: Baego 2023, MOS/Yangambi 2024, Yoko 2020. Annual Sentinel-2 reflectance + indices and clear count, three-year retrospective pooled quarterly reflectance, and 64 annual Google embeddings are freshly downloaded through Earth Engine in aligned 10m tiles. Source image IDs, recipes, grid metadata and caches are stored in V5. The original EE project is `musanga-511110`; a collaborator needs an authorized Earth Engine cloud project. Optional forest-condition controls: ETH 2020 height and uncertainty, JRC v1_2025 December 2020 classes, Copernicus 2019 tree cover. The controls are modelled proxies at unequal native resolution and may be temporally mismatched.
 
-## Colab launch
+Strict LOFO transfer and fivefold 500m block CV with 100m centre separation are distinct. The fitted 50m S2+embedding HGB is a prespecified baseline; no extra weighting or calibration. New V5 sample counts and scores must be reported, not assumed equal to V4. The historic NICFI/context and UAV DSM-context experiments are not regenerated by this notebook; retain their legacy artifacts if needed for the paper, or explicitly retire them. No external-region prediction is generated in NB08.
 
-Notebooks are available on the `V5` branch. Example NB00:
-https://colab.research.google.com/github/kvanoost/Musanga/blob/V5/V5/00_UAV_Input_Data_Audit_v5.ipynb
+## Release acceptance / cleanup
 
-**Do not execute staged notebooks until the first-cell migration stop is removed after verification.**
+1. Finish NB07 and verify all six TIFFs and the complete manifest.
+2. Run NB08 through the final `08_native_completion_manifest.json` and inspect support, native-area QA, data availability and scientific outputs.
+3. Verify all earlier outputs, run the lightweight NB05bis revision if it is the release version, and record the exact executed Git commit and runtime package versions.
+4. Freeze raw input inventory and checksums (see `verify_inputs.py`), check all new output locations and source signatures. Run the complete sequence again with the historical generated directories unavailable, preferably by the receiving collaborator. Keep the raw source folder accessible.
+5. Archive unique historical reports, reference outputs and NICFI/DSM diagnostics that are not regenerated. Do not delete the top-level `Final/Outputs` blindly: it also contains manually authored reports.
+6. Only after review and explicit approval, remove redundant generated `Final/Outputs/V3`, `V3_1` and `v4` folders reversibly. No automatic deletion.
+
+See [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md). Code migration does not establish clean-run or storage integrity. No old data has been deleted.
