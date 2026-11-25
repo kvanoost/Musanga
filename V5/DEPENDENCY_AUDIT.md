@@ -1,41 +1,32 @@
-# V5 dependency inventory (initial source scan, 2026-11-24)
+# V5 dependency inventory — updated 2026-11-25
 
-Source snapshot: `restore/nb08-scientific-v4` commit `eac970fa7ba2fddc3a5244683d56cd42472e7e96`.
-All ten V4 notebooks copied to `V5/`, all outputs and execution counts cleared, first-cell V5 safety guard inserted.
+Historical code snapshot: `restore/nb08-scientific-v4` commit `eac970fa7ba2fddc3a5244683d56cd42472e7e96`. Original V3/V3.1/V4 branches remain available for scientific provenance. V5 is a new native pipeline; names of a few V5 audit files retain historical labels but are generated anew under V5.
 
-| V5 notebook | Existing legacy dependency / migration requirement | Status |
+| Notebook | Native dependencies | Migration / run state |
 |---|---|---|
-| 00 Input audit | Reads permanent `Final/Data` and expects a V5-native replacement for the old approved input-audit manifest; rewrite to establish native V5 immutable raw input registry, with no V3.1 manifest requirement | blocked |
-| 01 Reference/spatial folds | Reads `Outputs/v4/00_reference_expansion_v1`; rewire to NB00 V5 registry, validate cover and spatial splits | blocked |
-| 02 RGB circles/plots | Reads V3.1 annotated/reference metadata, V4 audit + spatial folds; reconstruct from V5 source labels and NB00/01 outputs | blocked |
-| 03 RGB U-Net | Reads V3.1 metadata and V4 annotation, fold and chip outputs; rebuild chips, train and validate from V5-only inputs | blocked |
-| 04 RGB evaluation | Reads V4 `04_paired_rgb_heldout_v1`; confirm upstream generation and avoid self-reading old evaluation products | blocked |
-| 05 RGB/DSM/MS comparison | Reads V3.1 annotation manifest, V4 matched RGB, folds, NB03 and NB04 outputs; rewire all to V5-native products | blocked |
-| 05bis UAV quality | Reads V3.1 manifest, V4 splits and NB05; establish its ordering relative to NB06/07 | blocked |
-| 06 Scientific report | Reads V3.1 manifest and V4 NB00–NB05 outputs; convert report to generated V5 scientific products | blocked |
-| 07 MS inference | Reads V3.1 manifest, V4 training/model outputs; multiple late-stage cells hardcode Drive root and V4 inference paths; consolidate to one V5 checkpoint and reproducible mosaic reconstruction | blocked |
-| 08 Satellite detectability | **Critical:** reads V3.1 `06_spatial_planet_embeddings/CLEAN_NB06/frozen_50m_reference.parquet` for spatial cell grid and S2+embedding predictors; also reads NB07 V4 reconstructed masks and V4 structure products. Must create V5-native satellite reference/extraction and transfer of supporting environmental datasets, then retarget analyses 00–24. | blocked |
+| 00 | permanent raw Final/Data | executed |
+| 01 | NB00 native registry | executed |
+| 02 | raw labels, NB00/01 | executed |
+| 03 | raw labels/RGB, NB00/01/02 | executed |
+| 04 | NB03 V5 checkpoints, NB00–02 | executed |
+| 05 | NB03/04, raw DSM and MS | executed (five arms) |
+| 05bis | NB04/05 and raw RGB/MS headers | earlier V5 version executed; optimized RGB-only version awaiting execution |
+| 06 | NB00/04/05, optional NB05bis, raw excerpts | report and manifest observed in V5 Drive |
+| 07 | raw RGB/labels, NB00/01, NB03/05 contracts | production training and reconstruction running |
+| 08 | NB07 native complete mosaic manifest, raw ROI, newly acquired Earth Engine data | code revised; not executed |
 
-## Raw source folders observed in Google Drive
+## Open acceptance items
 
-`Final/Data` currently contains `Field/`, `Patrick/`, `LAS/`, `MS/`, `Annotations/`, `Ortho_RGB/`, `DSM/`. These are the **permanent source inventory**; read directly without copying.
+- NB07 completion manifest and NB08 native run not yet verified.
+- NB08 now regenerates six-resolution UAV target grids and all principal S2/embedding inputs. It does not read historical frozen reference tables, old TIFFs, or historical structure products.
+- Native 1m sampling approximates area; compare with exact native pixel-area spot checks and report discrepancies.
+- Optional independently sourced controls must pass access and support gates; balance-qualified matching and MOS slope analysis may be inconclusive or unavailable. JRC release is explicitly v1_2025 with Dec2020 status, not an undocumented historical version.
+- NICFI/embedding-context and UAV DSM-context optional ablations are not regenerated. Historical code is preserved, but GitHub code does not preserve the numeric/raster artifacts; retain unique scientific artifacts before deleting old outputs.
+- The earlier V4-to-V5 accuracy improvement remains scientifically unexplained and should be independently audited; do not attribute it to unified training alone.
+- The original source files stay in Final/Data (Field, Patrick, LAS, MS, Annotations, Ortho_RGB, DSM). The incomplete V5/Inputs/Ortho_RGB copy is not used by notebooks.
+- QA_and_Manifests was empty at Drive inspection. Existing stage-level manifests under Outputs are not a substitute for full raw-file checksums, an independently executed release, and a reviewed archival inventory.
+- No data has been deleted. Cleanup authorization remains false in the new NB08 completion manifest.
 
-## Additional handover specifications
+## Final cleanup decision
 
-- Immutable scientific decisions: binary Musanga band-2 threshold 0.5; six NB07 georeferenced mosaics; spatially independent CV/LOFO; strict balance-qualified MOS B8; 50m primary satellite support and 30m secondary sensitivity. Preserve underlying code and documented uncertainty.
-- No copy of generated legacy caches as V5 outputs. Raw/reference snapshots may only be admitted into `Inputs` with explicit provenance, hashes and frozen contract.
-- Resolve third-party authorizations for S2 / Earth Engine / embeddings and any NICFI, TMF, Copernicus and forest-condition layers, including collection versions, date ranges and read permissions.
-- Never use the presence of source names or output files as evidence that a notebook ran successfully; verify outputs, metadata, and clean-process execution.
-- No automated deletion of historical Drive files. Deletion requires a complete inventory, user-approved archival scope, recovery test, and verified V5 release.
-
-## Release ledger
-
-- GitHub branch `V5` created: **yes**
-- V5 notebook snapshots copied: **10 of 10**
-- Dedicated V5 Drive folders created: **yes**
-- Raw data duplication: **not required**; source remains `Final/Data`.
-- Principal code paths refactored: **yes**; dependency generation and validation remain incomplete.
-- New native satellite inputs: **no**
-- Cold sequential Colab execution: **no**
-- Handover to another user: **no**
-- Old Drive data deleted: **no**
+Verify the complete native run, raw input inventory, permissions, package versions, transfer reproducibility and optional historical artifact retention. Keep both Final/Data and Final/V5. Do not delete Final/Outputs wholesale because unique manually authored reports were observed there.
